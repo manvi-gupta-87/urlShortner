@@ -78,6 +78,23 @@ Result: short.url/Kp7C4z → twitter.com
  * More complex
  * Requires clock synchronization across all nodes
  * Slightly longer Urls
+ * 
+ * How it handles concurrent requests across multiple servers:
+ * 1. Each server has a unique nodeId (0-1023)
+ * 2. Each server maintains its own sequence counter (0-4095)
+ * 3. For requests in the same millisecond:
+ *    - Server 1 (nodeId: 1) generates: timestamp-1-0, timestamp-1-1, ...
+ *    - Server 2 (nodeId: 2) generates: timestamp-2-0, timestamp-2-1, ...
+ *    - Each server can handle 4096 requests/ms before waiting for next millisecond
+ * 4. The generated ID combines:
+ *    - 42 bits for timestamp
+ *    - 10 bits for nodeId (supports 1024 servers)
+ *    - 12 bits for sequence (4096 requests/ms/server)
+ * 
+ * Example with 3 servers at same millisecond:
+ * Server 1 (USA):  1679580000123-1-0 → "Kp7B2x"
+ * Server 2 (Europe): 1679580000123-2-0 → "Kp7C4z"
+ * Server 3 (Asia):  1679580000123-3-0 → "Kp7D6y"
  */
 
 @Component
