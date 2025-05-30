@@ -75,4 +75,7 @@ yarn-error.log
 
 # Build directories
 **/dist/
-**/build/ 
+**/build/
+
+# Project specific
+.cursorrules 
