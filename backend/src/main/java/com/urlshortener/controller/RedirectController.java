@@ -1,5 +1,6 @@
 package com.urlshortener.controller;
 
+import com.urlshortener.exception.UrlDeactivatedException;
 import com.urlshortener.exception.UrlExpiredException;
 import com.urlshortener.exception.UrlNotFoundException;
 import com.urlshortener.service.UrlService;
@@ -39,6 +40,10 @@ public class RedirectController {
             redirectView.setStatusCode(HttpStatus.NOT_FOUND);
             return redirectView;
         } catch (UrlExpiredException e) {
+            RedirectView redirectView = new RedirectView("/error/410");
+            redirectView.setStatusCode(HttpStatus.GONE);
+            return redirectView;
+        } catch (UrlDeactivatedException e) {
             RedirectView redirectView = new RedirectView("/error/410");
             redirectView.setStatusCode(HttpStatus.GONE);
             return redirectView;

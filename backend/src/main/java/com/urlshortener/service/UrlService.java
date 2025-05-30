@@ -6,4 +6,5 @@ import com.urlshortener.dto.UrlResponseDto;
 public interface UrlService {
     UrlResponseDto createShortUrl(UrlRequestDto request);
     UrlResponseDto getOriginalUrl(String shortUrl);
+    void deactivateUrl(String shortUrl);
 } 

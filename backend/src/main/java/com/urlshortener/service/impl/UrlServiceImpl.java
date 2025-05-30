@@ -2,6 +2,7 @@ package com.urlshortener.service.impl;
 
 import com.urlshortener.dto.UrlRequestDto;
 import com.urlshortener.dto.UrlResponseDto;
+import com.urlshortener.exception.UrlDeactivatedException;
 import com.urlshortener.exception.UrlExpiredException;
 import com.urlshortener.exception.UrlNotFoundException;
 import com.urlshortener.model.Url;
@@ -45,6 +46,7 @@ public class UrlServiceImpl implements UrlService {
                 .createdAt(LocalDateTime.now())
                 .expiresAt(expiresAt)
                 .clickCount(0)
+                .deactivated(false)
                 .build();
 
         url = urlRepository.save(url);
@@ -63,6 +65,10 @@ public class UrlServiceImpl implements UrlService {
         Url url = urlRepository.findByShortUrl(shortUrl)
                 .orElseThrow(() -> new UrlNotFoundException("URL not found: " + shortUrl));
 
+        if (url.getDeactivated()) {
+            throw new UrlDeactivatedException("URL has been deactivated: " + shortUrl);
+        }
+
         if (url.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new UrlExpiredException("URL has expired: " + shortUrl);
         }
@@ -76,5 +82,15 @@ public class UrlServiceImpl implements UrlService {
                 .expiresAt(url.getExpiresAt())
                 .clickCount(url.getClickCount())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void deactivateUrl(String shortUrl) {
+        Url url = urlRepository.findByShortUrl(shortUrl)
+                .orElseThrow(() -> new UrlNotFoundException("URL not found: " + shortUrl));
+        
+        url.setDeactivated(true);
+        urlRepository.save(url);
     }
 } 

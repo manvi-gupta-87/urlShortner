@@ -39,4 +39,8 @@ public class Url {
 
     @Column(nullable = false)
     private Integer clickCount;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deactivated = false;
 } 
