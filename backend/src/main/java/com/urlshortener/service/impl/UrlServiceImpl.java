@@ -2,6 +2,8 @@ package com.urlshortener.service.impl;
 
 import com.urlshortener.dto.UrlRequestDto;
 import com.urlshortener.dto.UrlResponseDto;
+import com.urlshortener.exception.UrlExpiredException;
+import com.urlshortener.exception.UrlNotFoundException;
 import com.urlshortener.model.Url;
 import com.urlshortener.repository.UrlRepository;
 import com.urlshortener.service.UrlService;
@@ -59,10 +61,10 @@ public class UrlServiceImpl implements UrlService {
     @Transactional
     public UrlResponseDto getOriginalUrl(String shortUrl) {
         Url url = urlRepository.findByShortUrl(shortUrl)
-                .orElseThrow(() -> new RuntimeException("URL not found"));
+                .orElseThrow(() -> new UrlNotFoundException("URL not found: " + shortUrl));
 
         if (url.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("URL has expired");
+            throw new UrlExpiredException("URL has expired: " + shortUrl);
         }
 
         url.setClickCount(url.getClickCount() + 1);
