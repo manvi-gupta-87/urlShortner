@@ -3,13 +3,14 @@ package com.urlshortener.controller;
 import com.urlshortener.exception.UrlDeactivatedException;
 import com.urlshortener.exception.UrlExpiredException;
 import com.urlshortener.exception.UrlNotFoundException;
+import com.urlshortener.service.AnalyticsService;
 import com.urlshortener.service.UrlService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.view.RedirectView;
 
 /**
@@ -22,31 +23,33 @@ import org.springframework.web.servlet.view.RedirectView;
  * - Supports both relative and absolute URLs
  * - Integrates with Spring's view resolution system
  */
-@RestController
+@Controller
 @RequiredArgsConstructor
 public class RedirectController {
 
     private final UrlService urlService;
+    private final AnalyticsService analyticsService;
 
-    @GetMapping("/{shortCode}")
-    public RedirectView redirectToOriginalUrl(@PathVariable String shortCode) {
+    @GetMapping("/{shortUrl}")
+    public RedirectView redirectToOriginalUrl(@PathVariable String shortUrl, HttpServletRequest request) {
         try {
-            String originalUrl = urlService.getOriginalUrl(shortCode).getOriginalUrl();
-            RedirectView redirectView = new RedirectView(originalUrl);
-            redirectView.setStatusCode(HttpStatus.FOUND);
-            return redirectView;
+            String originalUrl = urlService.getOriginalUrl(shortUrl);
+            
+            // Track the click
+            analyticsService.trackClick(
+                urlService.getUrlId(shortUrl),
+                request.getRemoteAddr(),
+                request.getHeader("User-Agent"),
+                request.getHeader("Referer")
+            );
+            
+            return new RedirectView(originalUrl);
         } catch (UrlNotFoundException e) {
-            RedirectView redirectView = new RedirectView("/error/404");
-            redirectView.setStatusCode(HttpStatus.NOT_FOUND);
-            return redirectView;
+            throw new UrlNotFoundException("URL not found");
         } catch (UrlExpiredException e) {
-            RedirectView redirectView = new RedirectView("/error/410");
-            redirectView.setStatusCode(HttpStatus.GONE);
-            return redirectView;
+            throw new UrlExpiredException("URL has expired");
         } catch (UrlDeactivatedException e) {
-            RedirectView redirectView = new RedirectView("/error/410");
-            redirectView.setStatusCode(HttpStatus.GONE);
-            return redirectView;
+            throw new UrlDeactivatedException("URL has been deactivated");
         }
     }
 } 
