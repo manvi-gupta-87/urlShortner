@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class UrlResponseDto {
+    private Long id;
     private String originalUrl;
     private String shortUrl;
     private LocalDateTime expiresAt;

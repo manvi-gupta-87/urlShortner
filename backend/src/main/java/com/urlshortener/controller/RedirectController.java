@@ -1,5 +1,6 @@
 package com.urlshortener.controller;
 
+import com.urlshortener.dto.UrlResponseDto;
 import com.urlshortener.exception.UrlDeactivatedException;
 import com.urlshortener.exception.UrlExpiredException;
 import com.urlshortener.exception.UrlNotFoundException;
@@ -33,11 +34,13 @@ public class RedirectController {
     @GetMapping("/{shortUrl}")
     public RedirectView redirectToOriginalUrl(@PathVariable String shortUrl, HttpServletRequest request) {
         try {
-            String originalUrl = urlService.getOriginalUrl(shortUrl);
+            UrlResponseDto urlResponse = urlService.getOriginalUrl(shortUrl);
+            String originalUrl = urlResponse.getOriginalUrl();
+            Long urlId = urlResponse.getId();
             
-            // Track the click
+            // Track the click asynchronously
             analyticsService.trackClick(
-                urlService.getUrlId(shortUrl),
+                urlId,
                 request.getRemoteAddr(),
                 request.getHeader("User-Agent"),
                 request.getHeader("Referer")

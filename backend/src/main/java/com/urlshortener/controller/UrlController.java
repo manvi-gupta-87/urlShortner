@@ -2,7 +2,9 @@ package com.urlshortener.controller;
 
 import com.urlshortener.dto.UrlRequestDto;
 import com.urlshortener.dto.UrlResponseDto;
+import com.urlshortener.dto.UrlAnalyticsResponse;
 import com.urlshortener.service.UrlService;
+import com.urlshortener.service.AnalyticsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 public class UrlController {
 
     private final UrlService urlService;
+    private final AnalyticsService analyticsService;
 
     @PostMapping
     public ResponseEntity<UrlResponseDto> createShortUrl(@Valid @RequestBody UrlRequestDto request) {
@@ -29,5 +32,12 @@ public class UrlController {
     public ResponseEntity<Void> deactivateUrl(@PathVariable String shortUrl) {
         urlService.deactivateUrl(shortUrl);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{shortCode}/stats")
+    public ResponseEntity<UrlAnalyticsResponse> getUrlStats(
+            @PathVariable String shortCode,
+            @RequestParam(defaultValue = "7") int days) {
+        return ResponseEntity.ok(analyticsService.getUrlAnalytics(shortCode, days));
     }
 } 

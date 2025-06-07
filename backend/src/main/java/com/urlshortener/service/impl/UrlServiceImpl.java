@@ -52,6 +52,7 @@ public class UrlServiceImpl implements UrlService {
         url = urlRepository.save(url);
 
         return UrlResponseDto.builder()
+                .id(url.getId())
                 .originalUrl(url.getOriginalUrl())
                 .shortUrl(url.getShortUrl())
                 .expiresAt(url.getExpiresAt())
@@ -77,6 +78,7 @@ public class UrlServiceImpl implements UrlService {
         url = urlRepository.save(url);
 
         return UrlResponseDto.builder()
+                .id(url.getId())
                 .originalUrl(url.getOriginalUrl())
                 .shortUrl(url.getShortUrl())
                 .expiresAt(url.getExpiresAt())

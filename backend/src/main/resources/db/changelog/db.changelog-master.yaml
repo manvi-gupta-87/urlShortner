@@ -1,0 +1,114 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1
+      author: manvi
+      changes:
+        - createTable:
+            tableName: urls
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: original_url
+                  type: VARCHAR(2048)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: short_url
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: click_count
+                  type: INT
+                  constraints:
+                    nullable: false
+                    defaultValueNumeric: 0
+              - column:
+                  name: deactivated
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+                    defaultValueBoolean: false
+            indexes:
+              - index:
+                  name: idx_short_url
+                  columns:
+                    - column:
+                        name: short_url
+                        type: VARCHAR(32)
+
+  - changeSet:
+      id: 2
+      author: manvi
+      changes:
+        - createTable:
+            tableName: click_events
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: url_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_click_events_url
+                    references: urls(id)
+              - column:
+                  name: timestamp
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ip_address
+                  type: VARCHAR(45)
+              - column:
+                  name: user_agent
+                  type: VARCHAR(512)
+              - column:
+                  name: referrer
+                  type: VARCHAR(2048)
+              - column:
+                  name: browser
+                  type: VARCHAR(100)
+              - column:
+                  name: device_type
+                  type: VARCHAR(50)
+              - column:
+                  name: country
+                  type: VARCHAR(100)
+              - column:
+                  name: city
+                  type: VARCHAR(100)
+            indexes:
+              - index:
+                  name: idx_click_events_url_id
+                  columns:
+                    - column:
+                        name: url_id
+                        type: BIGINT
+              - index:
+                  name: idx_click_events_timestamp
+                  columns:
+                    - column:
+                        name: timestamp
+                        type: TIMESTAMP 
