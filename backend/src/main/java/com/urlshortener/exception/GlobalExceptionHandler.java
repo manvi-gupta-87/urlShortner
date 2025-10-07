@@ -1,117 +1,100 @@
 package com.urlshortener.exception;
 
 import com.urlshortener.dto.ErrorResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolationException;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Global exception handler for the application.
- * Provides consistent error responses and prevents stack trace exposure.
- */
-@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(UrlNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleUrlNotFoundException(
-            UrlNotFoundException ex, HttpServletRequest request) {
-        log.error("URL not found: {}", ex.getMessage());
-        return createErrorResponse(
-            HttpStatus.NOT_FOUND,
-            "Not Found",
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+    public ResponseEntity<ErrorResponse> handleUrlNotFoundException(UrlNotFoundException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.NOT_FOUND.value())
+                .error("Not Found")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 
     @ExceptionHandler(UrlExpiredException.class)
-    public ResponseEntity<ErrorResponse> handleUrlExpiredException(
-            UrlExpiredException ex, HttpServletRequest request) {
-        log.error("URL expired: {}", ex.getMessage());
-        return createErrorResponse(
-            HttpStatus.GONE,
-            "Gone",
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+    public ResponseEntity<ErrorResponse> handleUrlExpiredException(UrlExpiredException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.GONE.value())
+                .error("Gone")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.GONE).body(error);
     }
 
     @ExceptionHandler(UrlDeactivatedException.class)
-    public ResponseEntity<ErrorResponse> handleUrlDeactivatedException(
-            UrlDeactivatedException ex, HttpServletRequest request) {
-        log.error("URL deactivated: {}", ex.getMessage());
-        return createErrorResponse(
-            HttpStatus.GONE,
-            "Gone",
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+    public ResponseEntity<ErrorResponse> handleUrlDeactivatedException(UrlDeactivatedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .error("Forbidden")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(UsernameNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUsernameNotFoundException(UsernameNotFoundException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.NOT_FOUND.value())
+                .error("Not Found")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(
-            MethodArgumentNotValidException ex, HttpServletRequest request) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .findFirst()
-                .orElse("Validation failed");
-        
-        log.error("Validation error: {}", message);
-        return createErrorResponse(
-            HttpStatus.BAD_REQUEST,
-            "Bad Request",
-            message,
-            request.getRequestURI()
+    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> 
+            errors.put(error.getField(), error.getDefaultMessage())
         );
-    }
-
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ErrorResponse> handleConstraintViolationException(
-            ConstraintViolationException ex, HttpServletRequest request) {
-        String message = ex.getConstraintViolations().stream()
-                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
-                .findFirst()
-                .orElse("Validation failed");
         
-        log.error("Constraint violation: {}", message);
-        return createErrorResponse(
-            HttpStatus.BAD_REQUEST,
-            "Bad Request",
-            message,
-            request.getRequestURI()
-        );
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Validation Error")
+                .message("Validation failed")
+                .details(errors)
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(
-            Exception ex, HttpServletRequest request) {
-        log.error("Unexpected error occurred", ex);
-        return createErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR,
-            "Internal Server Error",
-            "An unexpected error occurred. Please try again later.",
-            request.getRequestURI()
-        );
-    }
-
-    private ResponseEntity<ErrorResponse> createErrorResponse(
-            HttpStatus status, String error, String message, String path) {
-        ErrorResponse errorResponse = ErrorResponse.builder()
+    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
-                .status(status.value())
-                .error(error)
-                .message(message)
-                .path(path)
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .error("Internal Server Error")
+                .message("An unexpected error occurred")
                 .build();
-        
-        return new ResponseEntity<>(errorResponse, status);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
 } 

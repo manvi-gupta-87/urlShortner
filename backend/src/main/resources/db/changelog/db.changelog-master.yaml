@@ -111,4 +111,54 @@ databaseChangeLog:
                   columns:
                     - column:
                         name: timestamp
-                        type: TIMESTAMP 
+                        type: TIMESTAMP
+
+  - changeSet:
+      id: 3
+      author: manvi
+      changes:
+        - createTable:
+            tableName: users
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: username
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: email
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: password
+                  type: VARCHAR(120)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: role
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+                    defaultValue: "USER"
+            indexes:
+              - index:
+                  name: idx_users_username
+                  columns:
+                    - column:
+                        name: username
+                        type: VARCHAR(50)
+              - index:
+                  name: idx_users_email
+                  columns:
+                    - column:
+                        name: email
+                        type: VARCHAR(100) 

@@ -3,6 +3,7 @@ package com.urlshortener.dto;
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * Standardized error response for all API errors.
@@ -16,4 +17,5 @@ public class ErrorResponse {
     private String error;
     private String message;
     private String path;
+    private Map<String, String> details;
 } 
