@@ -1,0 +1,107 @@
+.dashboard-container {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 20px;
+  }
+
+  h1 {
+    text-align: center;
+    color: #3f51b5;
+    margin-bottom: 30px;
+    font-size: 2.5rem;
+  }
+
+  .shortener-card {
+    margin-bottom: 20px;
+  }
+
+  .full-width {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+
+  .submit-button {
+    width: 100%;
+    height: 48px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .button-spinner {
+    display: inline-block;
+    margin-right: 8px;
+  }
+
+  .error-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f44336;
+    background-color: #ffebee;
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 16px;
+  }
+
+  .error-message mat-icon {
+    color: #f44336;
+  }
+
+  .result-card {
+    background-color: #e8f5e9;
+    border-left: 4px solid #4caf50;
+  }
+
+  .result-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .shortened-url {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    background-color: white;
+    padding: 12px;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .shortened-url a {
+    color: #3f51b5;
+    text-decoration: none;
+    font-weight: 500;
+    word-break: break-all;
+  }
+
+  .shortened-url a:hover {
+    text-decoration: underline;
+  }
+
+  .success-icon {
+    color: #4caf50;
+    flex-shrink: 0;
+  }
+
+  .url-details {
+    background-color: white;
+    padding: 16px;
+    border-radius: 4px;
+    margin-top: 16px;
+  }
+
+  .url-details p {
+    margin: 8px 0;
+    color: #555;
+  }
+
+  .url-details strong {
+    color: #333;
+  }

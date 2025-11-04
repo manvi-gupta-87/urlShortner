@@ -1,0 +1,56 @@
+<div class="login-container">
+      <mat-card class="login-card">
+        <mat-card-header>
+          <mat-card-title>Welcome Back</mat-card-title>
+          <mat-card-subtitle>Sign in to continue</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-form">
+            <!-- Username Field -->
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Username</mat-label>
+              <input matInput placeholder="Enter your username" type="text" formControlName="username">
+              <mat-icon matPrefix>person</mat-icon>
+              <mat-error *ngIf="username?.hasError('required')">
+                  Username is required
+              </mat-error>
+              <mat-error *ngIf="username?.hasError('minlength')">
+                  Username must be atleast 3 characters
+              </mat-error>
+            </mat-form-field>
+
+            <!-- Password Field -->
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Password</mat-label>
+              <input matInput placeholder="Enter your password" type="password" formControlName="password">
+              <mat-icon matPrefix>lock</mat-icon>
+              <mat-error *ngIf="password?.hasError('required')">
+                  Password is required
+              </mat-error>
+              <mat-error *ngIf="password?.hasError('minlength')">
+                  Password must be atleast 6 characters
+              </mat-error>
+            </mat-form-field>
+
+            <!-- Error Message -->
+            <div class="error-message" *ngIf="errorMessage()">
+              <mat-icon>error</mat-icon>
+              <span>{{ errorMessage() }}</span>
+            </div>
+
+            <!-- Login Button -->
+            <button mat-raised-button color="primary" class="full-width" type="submit" 
+                    [disabled]="loginForm.invalid || loading()">
+              <span *ngIf="!loading()">Login</span>
+              <span *ngIf="loading()">Logging in...</span>
+            </button>
+          </form>
+
+          <!-- Sign Up Link -->
+          <div class="signup-link">
+            <p>Don't have an account? <a routerLink="/register">Sign up</a></p>
+          </div>
+        </mat-card-content>
+      </mat-card>
+  </div>
