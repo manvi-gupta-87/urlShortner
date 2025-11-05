@@ -60,6 +60,17 @@ export class AuthService {
 
     }
 
+    logout():void {
+        localStorage.removeItem(this.TOKEN_KEY);
+        localStorage.removeItem(this.USERNAME_KEY);
+        this.isAuthenticatedSignal.set(false);
+        this.currentUserSignal.set(null);
+        // Navigate to login page
+        this.router.navigate(['/login']);
+
+        console.log('User logged out successfully');
+    }
+
     private hasToken() : boolean {
         return this.getToken() != null;
     }
@@ -78,5 +89,13 @@ export class AuthService {
 
     private getToken() : string | null {
         return localStorage.getItem(this.TOKEN_KEY);
+    }
+
+    isAuthenticated():boolean {
+        return this.hasToken();
+    }
+
+    getCurrentUser():string | null{
+        return this.currentUserSignal();
     }
 }
