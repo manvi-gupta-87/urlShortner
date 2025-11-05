@@ -1,0 +1,38 @@
+mat-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 20px;
+    font-weight: 500;
+    cursor: pointer;
+
+    mat-icon {
+      font-size: 24px;
+      height: 24px;
+      width: 24px;
+    }
+  }
+
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  .user-menu {
+    button {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .username {
+      margin: 0 4px;
+      font-weight: 500;
+    }
+  }

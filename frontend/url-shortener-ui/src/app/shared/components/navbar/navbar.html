@@ -1,0 +1,23 @@
+<mat-toolbar color="primary" *ngIf="authService.isAuthenticated()">
+    <span class="brand">
+      <mat-icon>link</mat-icon>
+      URL Shortener
+    </span>
+
+    <span class="spacer"></span>
+
+    <div class="user-menu">
+      <button mat-button [matMenuTriggerFor]="menu">
+        <mat-icon>account_circle</mat-icon>
+        <span class="username">{{ authService.getCurrentUser() }}</span>
+        <mat-icon>arrow_drop_down</mat-icon>
+      </button>
+
+      <mat-menu #menu="matMenu">
+        <button mat-menu-item (click)="onLogout()">
+          <mat-icon>logout</mat-icon>
+          <span>Logout</span>
+        </button>
+      </mat-menu>
+    </div>
+</mat-toolbar>
