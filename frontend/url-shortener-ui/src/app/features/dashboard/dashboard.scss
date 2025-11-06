@@ -105,3 +105,33 @@
   .url-details strong {
     color: #333;
   }
+
+  .url-list-card {
+    margin-top: 2rem;
+  }
+
+  .loading-spinner {
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: #666;
+    padding: 2rem;
+    font-style: italic;
+  }
+
+  .url-table {
+    width: 100%;
+
+    a {
+      color: #1976d2;
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }

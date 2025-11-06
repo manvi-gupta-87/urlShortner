@@ -21,4 +21,8 @@ export class UrlService {
     createShortUrl(request:UrlRequest): Observable<UrlResponse> {
         return this.http.post<UrlResponse>(`${this.apiUrl}/urls`, request);
     }
+
+    getAllUrls():Observable<UrlResponse[]> {
+        return this.http.get<UrlResponse[]>(`${this.apiUrl}/urls`);
+    }
 }

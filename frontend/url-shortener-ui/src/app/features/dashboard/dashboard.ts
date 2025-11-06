@@ -11,6 +11,7 @@ import { Component, signal } from '@angular/core';
   import { UrlService } from '../../core/services/url.service';
   import { UrlRequest, UrlResponse } from '../../core/models/url.model';
   import { environment } from '../../environments/environment';
+import { MatTableModule } from '@angular/material/table';
 
 @Component({
   selector: 'app-dashboard',
@@ -23,7 +24,8 @@ import { Component, signal } from '@angular/core';
       MatSelectModule,
       MatButtonModule,
       MatIconModule,
-      MatProgressSpinnerModule
+      MatProgressSpinnerModule,
+      MatTableModule
   ],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss'
@@ -39,6 +41,8 @@ export class Dashboard {
     const baseUrl = environment.apiUrl.replace('/api/v1', '');
     return url ? `${baseUrl}/${url.shortUrl}` : null;
   };
+  urlList = signal<UrlResponse[]>([]);
+  isLoadingUrls = signal<boolean>(false);
 
     expirationOptions = [
       { value: 7, label: '7 days' },
@@ -50,6 +54,7 @@ export class Dashboard {
 
   constructor(private fb: FormBuilder,
       private urlService: UrlService) {
+        this.loadUserUrls();
         this.urlForm = this.fb.group({
           url: ['', [Validators.required, Validators.pattern(/^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/)]],
           expirationDays: [30, [Validators.required]]
@@ -69,6 +74,7 @@ export class Dashboard {
             this.loading.set(false);
             this.shortenedUrl.set(response);
             this.urlForm.reset({ url: '', expirationDays: 30 });
+            this.loadUserUrls()
         },
         error: (error) => {
           console.error('URL shortening failed:', error);
@@ -86,6 +92,20 @@ export class Dashboard {
     }).catch(err => {
       console.error('Failed to copy URL:', err);
     });
+  }
+
+  loadUserUrls():void {
+    this.isLoadingUrls.set(true);
+    this.urlService.getAllUrls().subscribe({
+      next: (urls) => {
+        this.urlList.set(urls);
+        this.isLoadingUrls.set(false);
+      },
+      error: (error) => {
+        console.error('Error loading URLs:', error);
+        this.isLoadingUrls.set(false);
+      } 
+    })
   }
 
 }

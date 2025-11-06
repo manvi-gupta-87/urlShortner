@@ -40,6 +40,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                    .requestMatchers("/api/v1/urls/**").authenticated()
                 .requestMatchers("/{shortCode}").permitAll()
                 .requestMatchers("/h2-console/**").permitAll() // Allow H2 console access
                 .anyRequest().authenticated()

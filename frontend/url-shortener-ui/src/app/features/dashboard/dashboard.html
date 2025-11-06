@@ -94,4 +94,64 @@
         </div>
       </mat-card-content>
     </mat-card>
+
+    <mat-card class="url-list-card">
+    <mat-card-header>
+      <mat-card-title>Your Shortened URLs</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (isLoadingUrls()) {
+        <div class="loading-spinner">
+          <mat-spinner></mat-spinner>
+        </div>
+      } @else if (urlList().length === 0) {
+        <p class="empty-state">No URLs yet. Create your first shortened URL above!</p>
+      } @else {
+        <table mat-table [dataSource]="urlList()" class="url-table">
+          <!-- Original URL Column -->
+          <ng-container matColumnDef="originalUrl">
+            <th mat-header-cell *matHeaderCellDef>Original URL</th>
+            <td mat-cell *matCellDef="let url">{{ url.originalUrl }}</td>
+          </ng-container>
+
+          <!-- Short URL Column -->
+          <ng-container matColumnDef="shortUrl">
+            <th mat-header-cell *matHeaderCellDef>Short URL</th>
+            <td mat-cell *matCellDef="let url">
+              <a [href]="'http://localhost:8081/' + url.shortUrl" target="_blank">
+                {{ url.shortUrl }}
+              </a>
+            </td>
+          </ng-container>
+
+          <!-- Clicks Column -->
+          <ng-container matColumnDef="clickCount">
+            <th mat-header-cell *matHeaderCellDef>Clicks</th>
+            <td mat-cell *matCellDef="let url">{{ url.clickCount }}</td>
+          </ng-container>
+
+          <!-- Expires Column -->
+          <ng-container matColumnDef="expiresAt">
+            <th mat-header-cell *matHeaderCellDef>Expires</th>
+            <td mat-cell *matCellDef="let url">{{ url.expiresAt | date:'short' }}</td>
+          </ng-container>
+
+          <!-- Actions Column -->
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let url">
+              <button mat-icon-button (click)="copyToClipboard('http://localhost:8081/' + url.shortUrl)">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']"></tr>
+          <tr mat-row *matRowDef="let row; columns: ['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 
+  'actions'];"></tr>
+        </table>
+      }
+    </mat-card-content>
+  </mat-card>
   </div>

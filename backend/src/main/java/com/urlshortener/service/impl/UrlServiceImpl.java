@@ -6,30 +6,43 @@ import com.urlshortener.exception.UrlDeactivatedException;
 import com.urlshortener.exception.UrlExpiredException;
 import com.urlshortener.exception.UrlNotFoundException;
 import com.urlshortener.model.Url;
+import com.urlshortener.model.User;
 import com.urlshortener.repository.UrlRepository;
+import com.urlshortener.repository.UserRepository;
 import com.urlshortener.service.UrlService;
 import com.urlshortener.service.generator.UrlGeneratorFactory;
 import com.urlshortener.service.generator.UrlGeneratorFactory.GeneratorStrategy;
+import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
+@Log4j2
 @Service
 @RequiredArgsConstructor
 public class UrlServiceImpl implements UrlService {
 
     private final UrlRepository urlRepository;
     private final UrlGeneratorFactory urlGeneratorFactory;
+    private final UserRepository userRepository;
 
     @Value("${url.generator.strategy:DISTRIBUTED}")
     private GeneratorStrategy generatorStrategy;
 
+
     @Override
     @Transactional
-    public UrlResponseDto createShortUrl(UrlRequestDto request) {
+    public UrlResponseDto createShortUrl(UrlRequestDto request, String userName) {
         String shortUrl;
         do {
             shortUrl = urlGeneratorFactory.getGenerator(generatorStrategy)
@@ -40,6 +53,7 @@ public class UrlServiceImpl implements UrlService {
             request.getExpirationDays() != null ? request.getExpirationDays() : 7
         );
 
+        User user = userRepository.findByUsername(userName).orElseThrow(()-> new UsernameNotFoundException("User not found in the database " + userName));
         Url url = Url.builder()
                 .originalUrl(request.getUrl())
                 .shortUrl(shortUrl)
@@ -47,6 +61,7 @@ public class UrlServiceImpl implements UrlService {
                 .expiresAt(expiresAt)
                 .clickCount(0)
                 .deactivated(false)
+                .user(user)
                 .build();
 
         url = urlRepository.save(url);
@@ -84,6 +99,32 @@ public class UrlServiceImpl implements UrlService {
                 .expiresAt(url.getExpiresAt())
                 .clickCount(url.getClickCount())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public List<UrlResponseDto> getAllUserUrls(String userName) {
+
+        if (StringUtils.isEmpty(userName)) {
+            log.error("UserName is empty");
+            return Collections.EMPTY_LIST;
+        }
+        Optional<User> user = userRepository.findByUsername(userName);
+        if (user.isPresent()) {
+            List<Url> urls = urlRepository.findByUserOrderByCreatedAtDesc(user.orElse(null));
+            if (!CollectionUtils.isEmpty(urls)) {
+                return urls.stream().map(url -> UrlResponseDto.builder()
+                        .id(url.getId())
+                        .originalUrl(url.getOriginalUrl())
+                        .shortUrl(url.getShortUrl())
+                        .expiresAt(url.getExpiresAt())
+                        .clickCount(url.getClickCount())
+                        .build())
+                        .collect(Collectors.toList());
+
+                };
+            }
+        return Collections.EMPTY_LIST;
     }
 
     @Override

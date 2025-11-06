@@ -161,4 +161,24 @@ databaseChangeLog:
                   columns:
                     - column:
                         name: email
-                        type: VARCHAR(100) 
+                        type: VARCHAR(100)
+  - changeSet:
+      id: 4
+      author: manvi
+      changes:
+        - addColumn:
+            tableName: urls
+            columns:
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_urls_user
+                    references: users(id)
+        - createIndex:
+            tableName: urls
+            indexName: idx_urls_user_id
+            columns:
+              - column:
+                  name: user_id
