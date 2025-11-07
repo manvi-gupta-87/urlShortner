@@ -141,10 +141,19 @@
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>Actions</th>
             <td mat-cell *matCellDef="let url">
-              <button mat-icon-button (click)="copyToClipboard('http://localhost:8081/' + url.shortUrl)">
-                <mat-icon>content_copy</mat-icon>
-              </button>
-            </td>
+    <button mat-icon-button 
+            color="primary" 
+            (click)="copyToClipboard(url.shortUrl)"
+            matTooltip="Copy URL">
+      <mat-icon>content_copy</mat-icon>
+    </button>
+    <button mat-icon-button 
+            color="warn" 
+            (click)="deactivateUrl(url.shortUrl)"
+            matTooltip="Deactivate URL">
+      <mat-icon>delete</mat-icon>
+    </button>
+  </td>
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']"></tr>

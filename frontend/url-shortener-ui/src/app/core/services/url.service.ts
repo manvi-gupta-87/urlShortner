@@ -25,4 +25,8 @@ export class UrlService {
     getAllUrls():Observable<UrlResponse[]> {
         return this.http.get<UrlResponse[]>(`${this.apiUrl}/urls`);
     }
+
+    deactivateUrl(shortUrl: string): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}/urls/${shortUrl}`)
+    }
 }

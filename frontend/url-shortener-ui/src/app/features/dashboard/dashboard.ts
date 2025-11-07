@@ -12,6 +12,9 @@ import { Component, signal } from '@angular/core';
   import { UrlRequest, UrlResponse } from '../../core/models/url.model';
   import { environment } from '../../environments/environment';
 import { MatTableModule } from '@angular/material/table';
+  import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+  import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+    import { MatTooltipModule } from '@angular/material/tooltip';
 
 @Component({
   selector: 'app-dashboard',
@@ -25,7 +28,10 @@ import { MatTableModule } from '@angular/material/table';
       MatButtonModule,
       MatIconModule,
       MatProgressSpinnerModule,
-      MatTableModule
+      MatTableModule,
+      MatSnackBarModule,
+      MatDialogModule,
+      MatTooltipModule
   ],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss'
@@ -53,7 +59,9 @@ export class Dashboard {
     ]
 
   constructor(private fb: FormBuilder,
-      private urlService: UrlService) {
+      private urlService: UrlService, 
+      private snackBar: MatSnackBar,
+      private dialog: MatDialog) {
         this.loadUserUrls();
         this.urlForm = this.fb.group({
           url: ['', [Validators.required, Validators.pattern(/^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/)]],
@@ -87,10 +95,18 @@ export class Dashboard {
   } 
 
   copyToClipboard(url: string): void {
-    navigator.clipboard.writeText(url).then(() => {
-      console.log('URL copied to clipboard!');
+    const fullUrl = `${environment.apiUrl.replace('/api/v1', '')}/${url}`;
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      this.snackBar.open('URL copied to clipboard!', 'Close', {
+        duration: 3000,
+        horizontalPosition: 'center',
+        verticalPosition: 'bottom'
+      });
     }).catch(err => {
       console.error('Failed to copy URL:', err);
+      this.snackBar.open('Failed to copy URL', 'Close', {
+        duration: 3000
+      });
     });
   }
 
@@ -106,6 +122,25 @@ export class Dashboard {
         this.isLoadingUrls.set(false);
       } 
     })
+  }
+
+  deactivateUrl(shortUrl: string ):void {
+    if(confirm('Are you sure you want to deactivate this URL? It will no longer redirect.')) {
+      this.urlService.deactivateUrl(shortUrl).subscribe({
+        next: ()=>{
+          this.snackBar.open('URL deactivated successfully', 'Close', {
+            duration: 3000
+          });
+          this.loadUserUrls();
+        },
+        error: (error) => {
+          console.error('Error deactivating URL:', error);
+          this.snackBar.open('Failed to deactivate URL', 'Close', {
+            duration: 3000
+          });
+        }
+      })
+    }
   }
 
 }
