@@ -1,166 +1,175 @@
 <div class="dashboard-container">
-    <h1>URL Shortener</h1>
+  <h1>URL Shortener</h1>
 
-    <!-- URL Shortening Form -->
-    <mat-card class="shortener-card">
-      <mat-card-header>
-        <mat-card-title>Shorten a URL</mat-card-title>
-      </mat-card-header>
+  <!-- URL Shortening Form -->
+  <mat-card class="shortener-card">
+    <mat-card-header>
+      <mat-card-title>Shorten a URL</mat-card-title>
+    </mat-card-header>
 
-      <mat-card-content>
-        <form [formGroup]="urlForm" (ngSubmit)="onSubmit()">
+    <mat-card-content>
+      <form [formGroup]="urlForm" (ngSubmit)="onSubmit()">
+        <!-- Original URL Input -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Enter your long URL</mat-label>
+          <input
+            matInput
+            formControlName="url"
+            placeholder="https://example.com/very/long/url"
+            type="url"
+          />
+          <mat-icon matPrefix>link</mat-icon>
+          <mat-error *ngIf="urlForm.get('url')?.hasError('required')"> URL is required </mat-error>
+          <mat-error *ngIf="urlForm.get('url')?.hasError('pattern')">
+            Please enter a valid URL
+          </mat-error>
+        </mat-form-field>
 
-          <!-- Original URL Input -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Enter your long URL</mat-label>
-            <input 
-              matInput 
-              formControlName="url" 
-              placeholder="https://example.com/very/long/url"
-              type="url"
-            />
-            <mat-icon matPrefix>link</mat-icon>
-            <mat-error *ngIf="urlForm.get('url')?.hasError('required')">
-              URL is required
-            </mat-error>
-            <mat-error *ngIf="urlForm.get('url')?.hasError('pattern')">
-              Please enter a valid URL
-            </mat-error>
-          </mat-form-field>
+        <!-- Expiration Dropdown -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Expiration</mat-label>
+          <mat-select formControlName="expirationDays">
+            <mat-option *ngFor="let option of expirationOptions" [value]="option.value">
+              {{ option.label }}
+            </mat-option>
+          </mat-select>
+          <mat-icon matPrefix>schedule</mat-icon>
+        </mat-form-field>
 
-          <!-- Expiration Dropdown -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Expiration</mat-label>
-            <mat-select formControlName="expirationDays">
-              <mat-option *ngFor="let option of expirationOptions" [value]="option.value">
-                {{ option.label }}
-              </mat-option>
-            </mat-select>
-            <mat-icon matPrefix>schedule</mat-icon>
-          </mat-form-field>
+        <!-- Submit Button -->
+        <button
+          mat-raised-button
+          color="primary"
+          type="submit"
+          [disabled]="urlForm.invalid || loading()"
+          class="submit-button"
+        >
+          <mat-spinner *ngIf="loading()" diameter="20" class="button-spinner"></mat-spinner>
+          <span *ngIf="!loading()">Shorten URL</span>
+          <span *ngIf="loading()">Shortening...</span>
+        </button>
 
-          <!-- Submit Button -->
-          <button 
-            mat-raised-button 
-            color="primary" 
-            type="submit"
-            [disabled]="urlForm.invalid || loading()"
-            class="submit-button"
-          >
-            <mat-spinner *ngIf="loading()" diameter="20" class="button-spinner"></mat-spinner>
-            <span *ngIf="!loading()">Shorten URL</span>
-            <span *ngIf="loading()">Shortening...</span>
-          </button>
+        <!-- Error Message -->
+        <div *ngIf="errorMessage()" class="error-message">
+          <mat-icon>error</mat-icon>
+          <span>{{ errorMessage() }}</span>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
 
-          <!-- Error Message -->
-          <div *ngIf="errorMessage()" class="error-message">
-            <mat-icon>error</mat-icon>
-            <span>{{ errorMessage() }}</span>
-          </div>
-        </form>
-      </mat-card-content>
-    </mat-card>
+  <!-- Result Display (shows after successful shortening) -->
+  <mat-card *ngIf="shortenedUrl()" class="result-card">
+    <mat-card-header>
+      <mat-card-title>Your Shortened URL</mat-card-title>
+    </mat-card-header>
 
-    <!-- Result Display (shows after successful shortening) -->
-    <mat-card *ngIf="shortenedUrl()" class="result-card">
-      <mat-card-header>
-        <mat-card-title>Your Shortened URL</mat-card-title>
-      </mat-card-header>
-
-      <mat-card-content>
-        <div class="result-container">
-          <div class="shortened-url">
-            <mat-icon class="success-icon">check_circle</mat-icon>
-            <a [href]="fullShortUrl()" target="_blank">
-              {{ fullShortUrl() }}
-            </a>
-          </div>
-
-          <button 
-            mat-raised-button 
-            color="accent"
-            [disabled] = "!fullShortUrl()"
-            (click)="copyToClipboard(fullShortUrl()!)"
-          >
-            <mat-icon>content_copy</mat-icon>
-            Copy
-          </button>
+    <mat-card-content>
+      <div class="result-container">
+        <div class="shortened-url">
+          <mat-icon class="success-icon">check_circle</mat-icon>
+          <a [href]="fullShortUrl()" target="_blank">
+            {{ fullShortUrl() }}
+          </a>
         </div>
 
-        <div class="url-details">
-          <p><strong>Original URL:</strong> {{ shortenedUrl()?.originalUrl }}</p>
-          <p><strong>Expires:</strong> {{ shortenedUrl()?.expiresAt | date:'medium' }}</p>
-          <p><strong>Clicks:</strong> {{ shortenedUrl()?.clickCount }}</p>
-        </div>
-      </mat-card-content>
-    </mat-card>
+        <button
+          mat-raised-button
+          color="accent"
+          [disabled]="!fullShortUrl()"
+          (click)="copyToClipboard(fullShortUrl()!)"
+        >
+          <mat-icon>content_copy</mat-icon>
+          Copy
+        </button>
+      </div>
 
-    <mat-card class="url-list-card">
+      <div class="url-details">
+        <p><strong>Original URL:</strong> {{ shortenedUrl()?.originalUrl }}</p>
+        <p><strong>Expires:</strong> {{ shortenedUrl()?.expiresAt | date : 'medium' }}</p>
+        <p><strong>Clicks:</strong> {{ shortenedUrl()?.clickCount }}</p>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="url-list-card">
     <mat-card-header>
       <mat-card-title>Your Shortened URLs</mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
       @if (isLoadingUrls()) {
-        <div class="loading-spinner">
-          <mat-spinner></mat-spinner>
-        </div>
+      <div class="loading-spinner">
+        <mat-spinner></mat-spinner>
+      </div>
       } @else if (urlList().length === 0) {
-        <p class="empty-state">No URLs yet. Create your first shortened URL above!</p>
+      <p class="empty-state">No URLs yet. Create your first shortened URL above!</p>
       } @else {
-        <table mat-table [dataSource]="urlList()" class="url-table">
-          <!-- Original URL Column -->
-          <ng-container matColumnDef="originalUrl">
-            <th mat-header-cell *matHeaderCellDef>Original URL</th>
-            <td mat-cell *matCellDef="let url">{{ url.originalUrl }}</td>
-          </ng-container>
+      <table mat-table [dataSource]="urlList()" class="url-table">
+        <!-- Original URL Column -->
+        <ng-container matColumnDef="originalUrl">
+          <th mat-header-cell *matHeaderCellDef>Original URL</th>
+            <td mat-cell *matCellDef="let url" data-label="Original URL:">{{ url.originalUrl }}</td>        
+        </ng-container>
 
-          <!-- Short URL Column -->
-          <ng-container matColumnDef="shortUrl">
-            <th mat-header-cell *matHeaderCellDef>Short URL</th>
-            <td mat-cell *matCellDef="let url">
-              <a [href]="'http://localhost:8081/' + url.shortUrl" target="_blank">
-                {{ url.shortUrl }}
-              </a>
-            </td>
-          </ng-container>
-
-          <!-- Clicks Column -->
-          <ng-container matColumnDef="clickCount">
-            <th mat-header-cell *matHeaderCellDef>Clicks</th>
-            <td mat-cell *matCellDef="let url">{{ url.clickCount }}</td>
-          </ng-container>
-
-          <!-- Expires Column -->
-          <ng-container matColumnDef="expiresAt">
-            <th mat-header-cell *matHeaderCellDef>Expires</th>
-            <td mat-cell *matCellDef="let url">{{ url.expiresAt | date:'short' }}</td>
-          </ng-container>
-
-          <!-- Actions Column -->
-          <ng-container matColumnDef="actions">
-            <th mat-header-cell *matHeaderCellDef>Actions</th>
-            <td mat-cell *matCellDef="let url">
-    <button mat-icon-button 
-            color="primary" 
-            (click)="copyToClipboard(url.shortUrl)"
-            matTooltip="Copy URL">
-      <mat-icon>content_copy</mat-icon>
-    </button>
-    <button mat-icon-button 
-            color="warn" 
-            (click)="deactivateUrl(url.shortUrl)"
-            matTooltip="Deactivate URL">
-      <mat-icon>delete</mat-icon>
-    </button>
+        <!-- Short URL Column -->
+        <ng-container matColumnDef="shortUrl">
+          <th mat-header-cell *matHeaderCellDef>Short URL</th>
+           <td mat-cell *matCellDef="let url" data-label="Short URL:">
+    <a [href]="'http://localhost:8081/' + url.shortUrl" target="_blank">
+      {{ url.shortUrl }}
+    </a>
   </td>
-          </ng-container>
+        </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']"></tr>
-          <tr mat-row *matRowDef="let row; columns: ['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 
-  'actions'];"></tr>
-        </table>
+        <!-- Clicks Column -->
+        <ng-container matColumnDef="clickCount">
+          <th mat-header-cell *matHeaderCellDef>Clicks</th>
+          <td mat-cell *matCellDef="let url" data-label="Clicks:">{{ url.clickCount }}</td>
+        </ng-container>
+
+        <!-- Expires Column -->
+        <ng-container matColumnDef="expiresAt">
+          <th mat-header-cell *matHeaderCellDef>Expires</th>
+          <td mat-cell *matCellDef="let url" data-label="Expires:">{{ url.expiresAt | date : 'short' }}</td>
+        </ng-container>
+
+        <!-- Actions Column -->
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let url" data-label="Actions:">
+            <button
+              mat-icon-button
+              color="primary"
+              (click)="copyToClipboard(url.shortUrl)"
+              matTooltip="Copy URL"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              color="warn"
+              (click)="deactivateUrl(url.shortUrl)"
+              matTooltip="Deactivate URL"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr
+          mat-header-row
+          *matHeaderRowDef="['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']"
+        ></tr>
+        <tr
+          mat-row
+          *matRowDef="
+            let row;
+            columns: ['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']
+          "
+        ></tr>
+      </table>
       }
     </mat-card-content>
   </mat-card>
-  </div>
+</div>

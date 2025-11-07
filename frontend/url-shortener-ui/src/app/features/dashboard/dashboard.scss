@@ -135,3 +135,88 @@
       }
     }
   }
+
+  // Responsive styles for mobile devices
+  @media (max-width: 768px) {
+    .dashboard-container {
+      margin: 20px auto;
+      padding: 10px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+    }
+
+    .result-container {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    // Make table responsive - hide on mobile, show details differently
+    .url-table {
+      display: block;
+      overflow-x: auto;
+
+      thead {
+        display: none;
+      }
+
+      tbody {
+        display: block;
+      }
+
+      tr {
+        display: block;
+        margin-bottom: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 1rem;
+        background: white;
+      }
+
+      td {
+        display: block;
+        text-align: left;
+        padding: 0.5rem 0;
+        border: none;
+
+        &:before {
+          content: attr(data-label);
+          font-weight: bold;
+          display: inline-block;
+          width: 100px;
+          color: #666;
+        }
+
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+    }
+  }
+
+  @media (max-width: 480px) {
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .submit-button {
+      height: 44px;
+      font-size: 14px;
+    }
+  }
+
+   // Global error snackbar styling
+  .error-snackbar {
+    background-color: #f44336 !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white !important;
+    }
+
+    .mat-mdc-button {
+      color: white !important;
+    }
+  }
