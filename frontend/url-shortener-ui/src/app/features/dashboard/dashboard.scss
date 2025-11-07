@@ -136,10 +136,9 @@
     }
   }
 
-  // Responsive styles for mobile devices
+ // Simple responsive: allow horizontal scroll on mobile
   @media (max-width: 768px) {
     .dashboard-container {
-      margin: 20px auto;
       padding: 10px;
     }
 
@@ -153,46 +152,8 @@
       align-items: stretch;
     }
 
-    // Make table responsive - hide on mobile, show details differently
-    .url-table {
-      display: block;
+    .url-list-card {
       overflow-x: auto;
-
-      thead {
-        display: none;
-      }
-
-      tbody {
-        display: block;
-      }
-
-      tr {
-        display: block;
-        margin-bottom: 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 1rem;
-        background: white;
-      }
-
-      td {
-        display: block;
-        text-align: left;
-        padding: 0.5rem 0;
-        border: none;
-
-        &:before {
-          content: attr(data-label);
-          font-weight: bold;
-          display: inline-block;
-          width: 100px;
-          color: #666;
-        }
-
-        &:last-child {
-          border-bottom: none;
-        }
-      }
     }
   }
 
@@ -207,7 +168,7 @@
     }
   }
 
-   // Global error snackbar styling
+  // Global error snackbar styling
   .error-snackbar {
     background-color: #f44336 !important;
     color: white !important;
