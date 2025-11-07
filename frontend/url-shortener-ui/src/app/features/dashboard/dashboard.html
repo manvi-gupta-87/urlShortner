@@ -167,6 +167,7 @@
             let row;
             columns: ['originalUrl', 'shortUrl', 'clickCount', 'expiresAt', 'actions']
           "
+          [class.deactivated-row]="row.deactivated"
         ></tr>
       </table>
       }

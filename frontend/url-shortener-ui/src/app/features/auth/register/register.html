@@ -36,21 +36,73 @@
           <!-- Password Field -->
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Password</mat-label>
-            <input matInput placeholder="Enter your password" type="password" formControlName="password">
+            <input matInput placeholder="Enter your password"
+                   [type]="hidePassword() ? 'password' : 'text'"
+                   formControlName="password"
+                   (input)="calculatePasswordStrength()">
             <mat-icon matPrefix>lock</mat-icon>
+            <button mat-icon-button matSuffix type="button"
+                    (click)="togglePasswordVisibility()"
+                    [attr.aria-label]="'Toggle password visibility'">
+              <mat-icon>{{hidePassword() ? 'visibility_off' : 'visibility'}}</mat-icon>
+            </button>
             <mat-error *ngIf="password?.hasError('required')">
               Password is required
             </mat-error>
-            <mat-error *ngIf="password?.hasError('minlength')">
-              Password must be at least 6 characters
-            </mat-error>
           </mat-form-field>
+
+          <!-- Password Strength Indicator -->
+          <div class="password-strength" *ngIf="password?.value">
+            <div class="strength-bar">
+              <div class="strength-bar-fill"
+                   [style.width.%]="(passwordStrength() + 1) * 20"
+                   [style.background-color]="getStrengthColor()">
+              </div>
+            </div>
+            <span class="strength-label" [style.color]="getStrengthColor()">
+              {{ getStrengthLabel() }}
+            </span>
+          </div>
+
+          <!-- Password Requirements Checklist -->
+          <div class="password-requirements" *ngIf="password?.touched">
+            <p class="requirements-title">Password must contain:</p>
+            <ul class="requirements-list">
+              <li [class.valid]="!hasValidationError('minLength')">
+                <mat-icon>{{ !hasValidationError('minLength') ? 'check_circle' : 'cancel' }}</mat-icon>
+                At least 8 characters
+              </li>
+              <li [class.valid]="!hasValidationError('hasUpperCase')">
+                <mat-icon>{{ !hasValidationError('hasUpperCase') ? 'check_circle' : 'cancel' }}</mat-icon>
+                One uppercase letter
+              </li>
+              <li [class.valid]="!hasValidationError('hasLowerCase')">
+                <mat-icon>{{ !hasValidationError('hasLowerCase') ? 'check_circle' : 'cancel' }}</mat-icon>
+                One lowercase letter
+              </li>
+              <li [class.valid]="!hasValidationError('hasNumber')">
+                <mat-icon>{{ !hasValidationError('hasNumber') ? 'check_circle' : 'cancel' }}</mat-icon>
+                One number
+              </li>
+              <li [class.valid]="!hasValidationError('hasSpecialCharacter')">
+                <mat-icon>{{ !hasValidationError('hasSpecialCharacter') ? 'check_circle' : 'cancel' }}</mat-icon>
+                One special character (!@#$%^&*...)
+              </li>
+            </ul>
+          </div>
 
           <!-- Confirm Password Field -->
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Confirm Password</mat-label>
-            <input matInput placeholder="Confirm your password" type="password" formControlName="confirmPassword">
+            <input matInput placeholder="Confirm your password"
+                   [type]="hideConfirmPassword() ? 'password' : 'text'"
+                   formControlName="confirmPassword">
             <mat-icon matPrefix>lock</mat-icon>
+            <button mat-icon-button matSuffix type="button"
+                    (click)="toggleConfirmPasswordVisibility()"
+                    [attr.aria-label]="'Toggle confirm password visibility'">
+              <mat-icon>{{hideConfirmPassword() ? 'visibility_off' : 'visibility'}}</mat-icon>
+            </button>
             <mat-error *ngIf="confirmPassword?.hasError('required')">
               Please confirm your password
             </mat-error>

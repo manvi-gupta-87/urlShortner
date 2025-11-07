@@ -11,5 +11,6 @@ export interface UrlResponse {
   shortUrl: string;
   expiresAt: string;       // LocalDateTime comes as ISO string
   clickCount: number;
+  deactivated:boolean;
   // Note: Backend doesn't have createdAt or active fields!
 }

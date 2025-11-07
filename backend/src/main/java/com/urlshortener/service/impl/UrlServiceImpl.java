@@ -72,6 +72,7 @@ public class UrlServiceImpl implements UrlService {
                 .shortUrl(url.getShortUrl())
                 .expiresAt(url.getExpiresAt())
                 .clickCount(url.getClickCount())
+                .deactivated(url.getDeactivated())
                 .build();
     }
 
@@ -98,6 +99,7 @@ public class UrlServiceImpl implements UrlService {
                 .shortUrl(url.getShortUrl())
                 .expiresAt(url.getExpiresAt())
                 .clickCount(url.getClickCount())
+                .deactivated(url.getDeactivated())
                 .build();
     }
 
@@ -119,6 +121,7 @@ public class UrlServiceImpl implements UrlService {
                         .shortUrl(url.getShortUrl())
                         .expiresAt(url.getExpiresAt())
                         .clickCount(url.getClickCount())
+                                .deactivated(url.getDeactivated())
                         .build())
                         .collect(Collectors.toList());
 

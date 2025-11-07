@@ -16,6 +16,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { PasswordValidators } from '../../../core/validators/password.validators';
+import zxcvbn from 'zxcvbn';
 
 @Component({
   selector: 'app-register',
@@ -36,13 +38,22 @@ export class Register {
   registerForm: FormGroup;
   loading = signal<boolean>(false);
   errorMessage = signal<string>('');
+  passwordStrength = signal<number>(0); // 0-4 score
+  hidePassword = signal<boolean>(true);
+  hideConfirmPassword = signal<boolean>(true);
+
 
   constructor(private fb: FormBuilder, private authService: AuthService) {
     this.registerForm = this.fb.group(
       {
         username: ['', [Validators.required, Validators.minLength(3)]],
         email: ['', [Validators.required, Validators.email]],
-        password: ['', [Validators.required, Validators.minLength(6)]],
+        password: ['', [Validators.required, PasswordValidators.minLength(8),
+          PasswordValidators.hasLowerCase(),
+          PasswordValidators.hasUpperCase(),
+          PasswordValidators.hasNumber(),
+          PasswordValidators.hasSpecialCharacter()
+        ]],
         confirmPassword: ['', [Validators.required]],
       },
       { validators: this.passwordMatchValidator }
@@ -99,4 +110,54 @@ export class Register {
   get confirmPassword() {
     return this.registerForm.get('confirmPassword');
   }
+
+  calculatePasswordStrength():void {
+    const password = this.password?.value; 
+    if (password) {
+      const result = zxcvbn(password);
+      this.passwordStrength.set(result.score);
+    }else {
+      this.passwordStrength.set(0);
+    }
+  }
+
+  // Get password strength label
+  getStrengthLabel(): string {
+    const score = this.passwordStrength();
+    switch(score) {
+      case 0: return 'Very Weak';
+      case 1: return 'Weak';
+      case 2: return 'Fair';
+      case 3: return 'Good';
+      case 4: return 'Strong';
+      default: return '';
+    }
+  }
+
+  // Get password strength color
+  getStrengthColor(): string {
+    const score = this.passwordStrength();
+    switch(score) {
+      case 0: return '#f44336';
+      case 1: return '#ff9800';
+      case 2: return '#ffc107';
+      case 3: return '#8bc34a';
+      case 4: return '#4caf50';
+      default: return '#ddd';
+    }
+  }
+  // Toggle password visibility
+  togglePasswordVisibility(): void {
+    this.hidePassword.set(!this.hidePassword());
+  }
+
+  toggleConfirmPasswordVisibility(): void {
+    this.hideConfirmPassword.set(!this.hideConfirmPassword());
+  }
+
+  // Check if validation rule is met
+  hasValidationError(errorKey: string): boolean {
+    return this.password?.hasError(errorKey) ?? false;
+  }
 }
+

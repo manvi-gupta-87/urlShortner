@@ -95,7 +95,8 @@ export class Dashboard {
   } 
 
   copyToClipboard(url: string): void {
-    const fullUrl = `${environment.apiUrl.replace('/api/v1', '')}/${url}`;
+    const fullUrl = url.startsWith('https://') || url.startsWith('http://') ? url : 
+    `${environment.apiUrl.replace('/api/v1', '')}/${url}`;
     navigator.clipboard.writeText(fullUrl).then(() => {
       this.snackBar.open('URL copied to clipboard!', 'Close', {
         duration: 3000,

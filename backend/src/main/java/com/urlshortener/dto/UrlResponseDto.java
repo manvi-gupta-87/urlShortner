@@ -12,4 +12,5 @@ public class UrlResponseDto {
     private String shortUrl;
     private LocalDateTime expiresAt;
     private Integer clickCount;
+    private boolean deactivated;
 } 
