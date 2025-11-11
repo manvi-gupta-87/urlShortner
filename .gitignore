@@ -78,4 +78,4 @@ yarn-error.log
 **/build/
 
 # Project specific
-.cursorrules 
+.cursorrules microservices/.env
