@@ -398,8 +398,9 @@ cd microservices
     </modules>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
         <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
     </properties>
 
     <dependencyManagement>
@@ -484,6 +485,14 @@ mkdir -p analytics-service/src/main/resources
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
@@ -493,62 +502,100 @@ mkdir -p analytics-service/src/main/resources
             <artifactId>jakarta.validation-api</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
 ```
 
 ---
 
-### **Step 2.2: Copy DTOs, Exceptions, and Shared Models from Monolith**
+### **Step 2.2: Copy ONLY Common/Shared Code from Monolith**
+
+**⚠️ IMPORTANT - Microservices Best Practice:**
+- **DO NOT** copy service-specific DTOs (they belong to individual services)
+- **DO NOT** copy domain entities like User.java (they belong to their respective services)
+- **ONLY** copy truly shared code: common exceptions and ErrorResponse
 
 ```bash
 # Copy from monolith backend to shared-library
 cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner
 
-# Create directories first
+# Create directories
 mkdir -p microservices/shared-library/src/main/java/com/urlshortener/dto
 mkdir -p microservices/shared-library/src/main/java/com/urlshortener/exception
-mkdir -p microservices/shared-library/src/main/java/com/urlshortener/model
 
-# DTOs
-cp backend/src/main/java/com/urlshortener/dto/*.java \
+# Copy ONLY ErrorResponse (common error format)
+cp backend/src/main/java/com/urlshortener/dto/ErrorResponse.java \
    microservices/shared-library/src/main/java/com/urlshortener/dto/
 
-# Exceptions
+# Copy ALL exception classes (domain exceptions used by all services)
 cp backend/src/main/java/com/urlshortener/exception/*.java \
    microservices/shared-library/src/main/java/com/urlshortener/exception/
-
-# User model (needed by multiple services via Feign)
-cp backend/src/main/java/com/urlshortener/model/User.java \
-   microservices/shared-library/src/main/java/com/urlshortener/model/
 ```
 
-**Files to copy:**
+**Files to copy (ONLY 6 files):**
 
 ```
 shared-library/src/main/java/com/urlshortener/
 ├── dto/
-│   ├── UrlRequestDto.java           ← COPY from backend
-│   ├── UrlResponseDto.java          ← COPY from backend
-│   ├── LoginRequest.java            ← COPY from backend
-│   ├── AuthResponse.java            ← COPY from backend (NOT LoginResponse!)
-│   ├── RegisterRequest.java         ← COPY from backend
-│   ├── UrlAnalyticsResponse.java    ← COPY from backend
-│   └── ErrorResponse.java           ← COPY from backend
+│   └── ErrorResponse.java           ← COPY (common error format)
 │
-├── exception/
-│   ├── UrlNotFoundException.java           ← COPY from backend
-│   ├── UrlExpiredException.java            ← COPY from backend
-│   ├── UrlDeactivatedException.java        ← COPY from backend
-│   ├── UnauthorizedAccessException.java    ← COPY from backend (created in Phase 0)
-│   └── GlobalExceptionHandler.java         ← COPY from backend
-│
-└── model/
-    └── User.java                    ← COPY from backend (CRITICAL for Feign clients)
+└── exception/
+    ├── GlobalExceptionHandler.java         ← COPY (common exception handling)
+    ├── UnauthorizedAccessException.java    ← COPY (created in Phase 0)
+    ├── UrlNotFoundException.java           ← COPY (domain exception)
+    ├── UrlExpiredException.java            ← COPY (domain exception)
+    └── UrlDeactivatedException.java        ← COPY (domain exception)
 ```
 
-**⚠️ Important:** User.java must be in shared-library because URL Service needs it for Feign client responses.
+**Why this approach?**
+- ✅ **Loose coupling** - Services don't depend on each other's DTOs
+- ✅ **Service autonomy** - Each service owns its API contracts
+- ✅ **Independent deployment** - Can update DTOs without rebuilding all services
+- ✅ **Proper bounded contexts** - Clear service boundaries
 
-**No code changes needed!** Just copy-paste.
+**No code changes needed!** Just copy-paste the 6 files above.
+
+---
+
+### **Step 2.3: Build Shared Library**
+
+```bash
+cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
+mvn clean install -DskipTests
+```
+
+**Expected output:**
+```
+[INFO] Building Shared Library 1.0.0
+[INFO] Compiling 6 source files
+[INFO] BUILD SUCCESS
+```
+
+The shared-library JAR is now installed in your local Maven repository and ready to be used by microservices!
 
 ---
 
@@ -3224,7 +3271,7 @@ After completing all 13 phases, consider these advanced additions:
 
 **Top 5 Issues:**
 
-1. **"Cannot find symbol: class User"** → Ensure User.java copied to shared-library
+1. **"Cannot find symbol: class User"** → Ensure User.java is in auth-service (NOT shared-library)
 2. **Port already in use** → `lsof -i :8080 | grep LISTEN | awk '{print $2}' | xargs kill -9`
 3. **Services not registering with Eureka** → Check Eureka is running, wait 30s for registration
 4. **Liquibase table exists error** → Only enable Liquibase in auth-service
@@ -3243,7 +3290,7 @@ Before starting implementation:
 - [ ] .env file created with JWT_SECRET and database credentials
 - [ ] Understand build order: parent → shared-library → services
 - [ ] Docker installed (for Phase 9)
-- [ ] Java 21 SDK installed
+- [ ] Java 17 SDK installed
 - [ ] Maven 3.9+ installed
 
 ---
@@ -3254,7 +3301,7 @@ As you complete each phase, check it off:
 
 - [ ] **Phase 0:** Prerequisites complete
 - [ ] **Phase 1:** Parent POM and module structure created
-- [ ] **Phase 2:** Shared library with DTOs, exceptions, and User model
+- [ ] **Phase 2:** Shared library with common error DTOs and exceptions
 - [ ] **Phase 3:** Eureka server running on :8761
 - [ ] **Phase 4:** Auth service running on :8081
 - [ ] **Phase 5:** URL service running on :8082

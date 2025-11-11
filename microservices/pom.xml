@@ -20,16 +20,18 @@
 
     <modules>
         <module>shared-library</module>
-        <module>service-discovery</module>
-        <module>api-gateway</module>
-        <module>auth-service</module>
-        <module>url-service</module>
-        <module>analytics-service</module>
+        <!-- TODO: Uncomment as services are created -->
+        <!-- <module>service-discovery</module> -->
+        <!-- <module>api-gateway</module> -->
+        <!-- <module>auth-service</module> -->
+        <!-- <module>url-service</module> -->
+        <!-- <module>analytics-service</module> -->
     </modules>
 
     <properties>
         <java.version>17</java.version>
         <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
     </properties>
 
     <dependencyManagement>

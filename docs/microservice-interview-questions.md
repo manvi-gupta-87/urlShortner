@@ -14,8 +14,9 @@
 4. [Resilience Patterns](#resilience-patterns)
 5. [Traffic Management](#traffic-management)
 6. [Monitoring & Observability](#monitoring--observability)
-7. [Real Interview Scenarios](#real-interview-scenarios)
-8. [Quick Interview Tips](#quick-interview-tips)
+7. [Build & Deployment](#build--deployment)
+8. [Real Interview Scenarios](#real-interview-scenarios)
+9. [Quick Interview Tips](#quick-interview-tips)
 
 ---
 
@@ -342,6 +343,81 @@ curl -X PUT "http://gateway/admin/feature-flags/use-auth-microservice/percentage
 
 ---
 
+## Build & Deployment
+
+### Q13: What's the difference between executable JAR and library JAR?
+
+**Short Answer:**
+
+**Library JAR:** Contains reusable code for dependencies
+**Executable JAR:** Standalone application that can be run directly
+
+**Comparison:**
+
+| Aspect | Library JAR | Executable JAR (Spring Boot) |
+|--------|-------------|------------------------------|
+| **Purpose** | Provide reusable code | Run standalone application |
+| **Structure** | Standard JAR with classes | Fat JAR with nested dependencies |
+| **Main class** | ❌ None | ✅ Required (e.g., AuthServiceApplication) |
+| **Usage** | Added as dependency in POM | Run with `java -jar app.jar` |
+| **Spring Boot plugin** | Skip repackaging (`<skip>true</skip>`) | Repackage as fat JAR |
+| **Example** | shared-library-1.0.0.jar | auth-service-1.0.0.jar |
+| **Size** | Small (~50KB) | Large (~50MB with all deps) |
+
+**Library JAR Structure:**
+```
+shared-library-1.0.0.jar
+├── com/urlshortener/dto/ErrorResponse.class
+├── com/urlshortener/exception/...
+└── META-INF/MANIFEST.MF (no Main-Class)
+```
+
+**Executable JAR Structure:**
+```
+auth-service-1.0.0.jar
+├── BOOT-INF/
+│   ├── classes/           # Your compiled code
+│   └── lib/               # All dependencies (including shared-library)
+├── org/springframework/boot/loader/  # Spring Boot loader
+└── META-INF/MANIFEST.MF
+    Main-Class: org.springframework.boot.loader.JarLauncher
+    Start-Class: com.urlshortener.AuthServiceApplication
+```
+
+**Maven Configuration:**
+
+```xml
+<!-- Library JAR (shared-library) -->
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <skip>true</skip>  <!-- Skip repackaging -->
+    </configuration>
+</plugin>
+
+<!-- Executable JAR (auth-service) -->
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <!-- Default: repackage into executable JAR -->
+</plugin>
+```
+
+**Common Build Error:**
+
+When you forget `<skip>true</skip>` on a library:
+```bash
+[ERROR] Unable to find main class
+```
+
+**Why?** Spring Boot plugin tries to create executable JAR but library has no main class.
+
+**Strong Interview Answer:**
+> "Library JARs contain reusable code for other services to depend on - they're lightweight, contain only compiled classes, and can't be executed directly. Executable JARs, created by Spring Boot's repackaging plugin, are fat JARs that bundle your application code plus all dependencies in BOOT-INF/lib, making them standalone and runnable with `java -jar`. In our microservices project, the shared-library module is a library JAR that we add as a dependency to auth-service and url-service. Those service modules are executable JARs that can be deployed and run independently. The key is configuring the Spring Boot Maven plugin with `<skip>true</skip>` for library modules to prevent it from trying to create an executable JAR without a main class."
+
+---
+
 ## Real Interview Scenarios
 
 ### Scenario 1: "Tell me about a microservices migration you've worked on"
@@ -429,13 +505,13 @@ curl -X PUT "http://gateway/admin/feature-flags/use-auth-microservice/percentage
 
 ## Interview Question Categories
 
-### Architecture & Design (40%)
+### Architecture & Design (35%)
 - Monolith to microservices migration
 - Service boundaries
 - Database strategies
 - Communication patterns (sync vs async)
 
-### Resilience & Reliability (30%)
+### Resilience & Reliability (25%)
 - Circuit breakers (Resilience4j)
 - Retry strategies
 - Timeout handling
@@ -446,6 +522,12 @@ curl -X PUT "http://gateway/admin/feature-flags/use-auth-microservice/percentage
 - Canary deployments
 - Blue-green deployments
 - Rollback strategies
+
+### Build & Deployment (10%)
+- Executable vs library JARs
+- Maven multi-module projects
+- Spring Boot plugin configuration
+- Artifact packaging
 
 ### Observability & Monitoring (10%)
 - Metrics (Prometheus)
@@ -474,8 +556,8 @@ curl -X PUT "http://gateway/admin/feature-flags/use-auth-microservice/percentage
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** November 10, 2025
+**Document Version:** 1.1
+**Last Updated:** November 11, 2025
 **Next Review:** Before each interview
 
 ---
