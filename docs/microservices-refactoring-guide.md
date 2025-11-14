@@ -2111,28 +2111,481 @@ curl http://localhost:8082/api/v1/urls?page=0&size=20 \
 
 ## **PHASE 6: Extract Analytics Service (Day 3 - 3 hours)**
 
-### **Similar to URL Service - Copy these files:**
+### **Overview: Multi-Module Architecture**
 
-```bash
-# Copy Analytics Controller
-cp backend/src/main/java/com/urlshortener/controller/AnalyticsController.java \
-   microservices/analytics-service/src/main/java/com/urlshortener/controller/
+Analytics Service follows the same **enterprise multi-module pattern** as Auth Service, separating DTOs, Feign clients, and application code into distinct modules.
 
-# Copy Analytics Service
-cp backend/src/main/java/com/urlshortener/service/AnalyticsService.java \
-   microservices/analytics-service/src/main/java/com/urlshortener/service/
-cp backend/src/main/java/com/urlshortener/service/impl/AnalyticsServiceImpl.java \
-   microservices/analytics-service/src/main/java/com/urlshortener/service/impl/
-
-# Copy Analytics Model (if exists)
-# cp backend/src/main/java/com/urlshortener/model/ClickEvent.java ...
-
-# Copy Analytics Repository
-cp backend/src/main/java/com/urlshortener/repository/*Analytics*.java \
-   microservices/analytics-service/src/main/java/com/urlshortener/repository/
+**Module Structure:**
+```
+analytics-service/
+├── pom.xml                            # Parent POM (aggregator)
+├── analytics-service-dto/             # Data Transfer Objects
+│   ├── pom.xml                        # Library module (no repackaging)
+│   └── src/main/java/.../dto/
+│       ├── UrlAnalyticsResponse.java  # Analytics response DTO
+│       └── ClickEventDto.java         # Click event DTO for Feign
+├── analytics-service-lib/             # Feign Client Library
+│   ├── pom.xml                        # Library module (no repackaging)
+│   └── src/main/java/.../lib/
+│       └── AnalyticsServiceClient.java # Feign client interface
+└── analytics-service-app/             # Main Application
+    ├── pom.xml                        # Executable JAR (Spring Boot repackaging)
+    └── src/main/java/com/urlshortener/
+        ├── controller/                # AnalyticsController
+        ├── service/                   # AnalyticsService + impl
+        ├── model/                     # ClickEvent entity (with urlId, not @ManyToOne)
+        ├── repository/                # ClickEventRepository
+        └── AnalyticsServiceApplication.java
 ```
 
 **Port: 8083**
+
+---
+
+### **Step 6.1: Create Analytics Service Parent POM**
+
+```bash
+cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
+mkdir -p analytics-service
+```
+
+```xml
+<!-- microservices/analytics-service/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>microservices-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>analytics-service-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Analytics Service Parent</name>
+
+    <modules>
+        <module>analytics-service-dto</module>
+        <module>analytics-service-lib</module>
+        <module>analytics-service-app</module>
+    </modules>
+</project>
+```
+
+---
+
+### **Step 6.2: Create Analytics Service DTO Module**
+
+```bash
+mkdir -p analytics-service/analytics-service-dto/src/main/java/com/urlshortener/dto
+```
+
+```xml
+<!-- microservices/analytics-service/analytics-service-dto/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>analytics-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>analytics-service-dto</artifactId>
+    <name>Analytics Service DTO</name>
+
+    <dependencies>
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!-- Skip Spring Boot repackaging for library module -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**Copy UrlAnalyticsResponse from backend:**
+
+```bash
+# Copy existing DTO from monolith
+cp backend/src/main/java/com/urlshortener/dto/UrlAnalyticsResponse.java \
+   microservices/analytics-service/analytics-service-dto/src/main/java/com/urlshortener/dto/
+```
+
+The DTO already exists in the backend and doesn't need changes - it's a pure data transfer object with no JPA annotations.
+
+---
+
+### **Step 6.3: Create Analytics Service Lib Module**
+
+```bash
+mkdir -p analytics-service/analytics-service-lib/src/main/java/com/urlshortener/lib
+```
+
+```xml
+<!-- microservices/analytics-service/analytics-service-lib/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>analytics-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>analytics-service-lib</artifactId>
+    <name>Analytics Service Library (Feign Client)</name>
+
+    <dependencies>
+        <!-- DTO module dependency -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>analytics-service-dto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Spring Cloud OpenFeign -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+    </dependencies>
+
+    <!-- Skip Spring Boot repackaging for library module -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**Create Feign Client:**
+
+```java
+// microservices/analytics-service/analytics-service-lib/src/main/java/com/urlshortener/lib/AnalyticsServiceClient.java
+package com.urlshortener.lib;
+
+import com.urlshortener.dto.UrlAnalyticsResponse;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@FeignClient(name = "analytics-service")
+public interface AnalyticsServiceClient {
+
+    @GetMapping("/api/v1/analytics/urls/{urlId}/total-clicks")
+    Long getTotalClicks(@PathVariable Long urlId);
+
+    @GetMapping("/api/v1/analytics/urls/{urlId}/clicks-by-country")
+    Map<String, Long> getClicksByCountry(@PathVariable Long urlId);
+
+    @GetMapping("/api/v1/analytics/urls/{urlId}/clicks-by-browser")
+    Map<String, Long> getClicksByBrowser(@PathVariable Long urlId);
+
+    @GetMapping("/api/v1/analytics/urls/{urlId}/clicks-by-device")
+    Map<String, Long> getClicksByDeviceType(@PathVariable Long urlId);
+}
+```
+
+---
+
+### **Step 6.4: Create Analytics Service App Module**
+
+```bash
+mkdir -p analytics-service/analytics-service-app/src/main/java/com/urlshortener/{controller,service/impl,repository,model,config}
+mkdir -p analytics-service/analytics-service-app/src/main/resources
+```
+
+```xml
+<!-- microservices/analytics-service/analytics-service-app/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>analytics-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>analytics-service-app</artifactId>
+    <name>Analytics Service Application</name>
+
+    <dependencies>
+        <!-- Own DTO module -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>analytics-service-dto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Shared Library -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>shared-library</artifactId>
+        </dependency>
+
+        <!-- Spring Boot -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Eureka Client -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- Database -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- User Agent Parser -->
+        <dependency>
+            <groupId>eu.bitwalker</groupId>
+            <artifactId>UserAgentUtils</artifactId>
+            <version>1.21</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**Copy files from backend monolith:**
+
+```bash
+cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner
+
+# Copy Controller
+cp backend/src/main/java/com/urlshortener/controller/AnalyticsController.java \
+   microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/controller/
+
+# Copy Service interface and implementation
+cp backend/src/main/java/com/urlshortener/service/AnalyticsService.java \
+   microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/service/
+cp backend/src/main/java/com/urlshortener/service/impl/AnalyticsServiceImpl.java \
+   microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/service/impl/
+
+# Copy ClickEvent model
+cp backend/src/main/java/com/urlshortener/model/ClickEvent.java \
+   microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/model/
+
+# Copy Repository
+cp backend/src/main/java/com/urlshortener/repository/ClickEventRepository.java \
+   microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/repository/
+```
+
+**CRITICAL: Adapt ClickEvent Model for Microservices**
+
+After copying, edit `ClickEvent.java` to change from @ManyToOne relationship to storing just the ID:
+
+Change from:
+```java
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "url_id", nullable = false)
+private Url url;
+```
+
+To:
+```java
+@Column(name = "url_id", nullable = false)
+private Long urlId;  // Store ID, not entity - no cross-service relationships
+```
+
+**Why this change?**
+- In microservices, each service owns its data
+- ClickEvent belongs to analytics-service, Url belongs to url-service
+- We store the urlId as a foreign key, but NO JPA relationship
+- If we need URL data, we'd call url-service via Feign (not needed for analytics)
+
+**Create Application Class:**
+
+```java
+// microservices/analytics-service/analytics-service-app/src/main/java/com/urlshortener/AnalyticsServiceApplication.java
+package com.urlshortener;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+public class AnalyticsServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AnalyticsServiceApplication.class, args);
+    }
+}
+```
+
+**Create application.yml:**
+
+```yaml
+# microservices/analytics-service/analytics-service-app/src/main/resources/application.yml
+server:
+  port: 8083
+
+spring:
+  application:
+    name: analytics-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/urlshortener
+    username: urlshortener_user
+    password: urlshortener_pass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+```
+
+---
+
+### **Step 6.5: Update Parent POM**
+
+Add analytics-service to microservices-parent:
+
+```xml
+<!-- microservices/pom.xml -->
+<modules>
+    <module>shared-library</module>
+    <module>eureka-server</module>
+    <module>auth-service</module>
+    <module>url-service</module>
+    <module>analytics-service</module>  <!-- ADD THIS -->
+</modules>
+```
+
+---
+
+### **Step 6.6: Build Analytics Service**
+
+```bash
+cd microservices/analytics-service
+mvn clean install
+
+# Verify library modules produce plain JARs
+ls -lh analytics-service-dto/target/*.jar
+ls -lh analytics-service-lib/target/*.jar
+
+# Verify app module produces executable JAR
+ls -lh analytics-service-app/target/*.jar
+```
 
 ---
 
