@@ -28,6 +28,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Analytics Service Lib (for Feign Client) -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>analytics-service-lib</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

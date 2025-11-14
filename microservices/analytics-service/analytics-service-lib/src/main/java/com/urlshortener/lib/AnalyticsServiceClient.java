@@ -1,5 +1,6 @@
 package com.urlshortener.lib;
 
+import com.urlshortener.dto.UrlAnalyticsResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,4 +20,11 @@ public interface AnalyticsServiceClient {
 
     @GetMapping("/api/v1/analytics/urls/{urlId}/clicks-by-device")
     Map<String, Long> getClicksByDeviceType(@PathVariable Long urlId);
+
+    @GetMapping("/api/v1/analytics/urls/stats")
+    UrlAnalyticsResponse getUrlAnalytics(
+            @RequestParam Long urlId,
+            @RequestParam String shortCode,
+            @RequestParam String originalUrl,
+            @RequestParam(defaultValue = "7") int days);
 }

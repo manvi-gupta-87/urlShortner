@@ -1,5 +1,6 @@
 package com.urlshortener.controller;
 
+import com.urlshortener.dto.UrlAnalyticsResponse;
 import com.urlshortener.model.ClickEvent;
 import com.urlshortener.service.AnalyticsService;
 import lombok.RequiredArgsConstructor;
@@ -39,5 +40,14 @@ public class AnalyticsController {
     @GetMapping("/urls/{urlId}/clicks-by-device")
     public ResponseEntity<Map<String, Long>> getClicksByDeviceType(@PathVariable Long urlId) {
         return ResponseEntity.ok(analyticsService.getClicksByDeviceType(urlId));
+    }
+
+    @GetMapping("/urls/stats")
+    public ResponseEntity<UrlAnalyticsResponse> getUrlAnalytics(
+            @RequestParam Long urlId,
+            @RequestParam String shortCode,
+            @RequestParam String originalUrl,
+            @RequestParam(defaultValue = "7") int days) {
+        return ResponseEntity.ok(analyticsService.getUrlAnalytics(urlId, shortCode, originalUrl, days));
     }
 } 

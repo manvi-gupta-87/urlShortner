@@ -2589,6 +2589,145 @@ ls -lh analytics-service-app/target/*.jar
 
 ---
 
+### **Step 6.7: Integrate Analytics Service with URL Service**
+
+Add analytics-service-lib dependency to url-service:
+
+```xml
+<!-- microservices/url-service/pom.xml -->
+<dependencies>
+    <!-- Existing dependencies... -->
+
+    <!-- Analytics Service Lib (for Feign Client) -->
+    <dependency>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>analytics-service-lib</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+</dependencies>
+```
+
+Update url-service UrlController to add stats endpoint:
+
+```java
+// microservices/url-service/src/main/java/com/urlshortener/controller/UrlController.java
+
+import com.urlshortener.dto.UrlAnalyticsResponse;
+import com.urlshortener.lib.AnalyticsServiceClient;
+import com.urlshortener.model.Url;
+import com.urlshortener.repository.UrlRepository;
+
+@RestController
+@RequestMapping("/api/v1/urls")
+@RequiredArgsConstructor
+public class UrlController {
+
+    private final UrlService urlService;
+    private final AnalyticsServiceClient analyticsServiceClient;
+    private final UrlRepository urlRepository;
+
+    // ... existing endpoints ...
+
+    @GetMapping("/{shortCode}/stats")
+    public ResponseEntity<UrlAnalyticsResponse> getUrlStats(
+            @PathVariable String shortCode,
+            @RequestParam(defaultValue = "7") int days) {
+        // Fetch URL data from url-service database
+        Url url = urlRepository.findByShortUrl(shortCode)
+                .orElseThrow(() -> new RuntimeException("URL not found"));
+
+        // Call analytics-service via Feign client
+        return ResponseEntity.ok(
+            analyticsServiceClient.getUrlAnalytics(
+                url.getId(),
+                shortCode,
+                url.getOriginalUrl(),
+                days
+            )
+        );
+    }
+}
+```
+
+**Key Design Pattern:**
+- url-service owns URL metadata (id, shortCode, originalUrl)
+- analytics-service owns click analytics data
+- url-service calls analytics-service with context, receives aggregated stats
+- Follows microservices principle: each service provides what it knows
+
+---
+
+### **Step 6.8: Click Tracking - Future Enhancement (Kafka)**
+
+**Current Status:** Analytics retrieval (stats endpoint) is complete. Click tracking is deferred to a future phase with Kafka integration.
+
+**Why Kafka for Click Tracking:**
+
+❌ **REST API approach** (synchronous):
+- Every redirect waits for analytics REST call
+- If analytics-service is down, redirects fail
+- High-traffic URLs create bottlenecks
+- Network latency affects user experience
+
+✅ **Kafka approach** (asynchronous - recommended):
+- Redirect happens instantly
+- Click event published to Kafka topic
+- Analytics-service consumes and processes in background
+- Decoupled: analytics-service downtime doesn't affect redirects
+- Scalable: multiple consumers can process click events in parallel
+- High throughput: handles thousands of clicks per second
+
+**Future Implementation Plan:**
+
+1. **url-service RedirectController** publishes click event to Kafka:
+```java
+@GetMapping("/{shortUrl}")
+public RedirectView redirect(@PathVariable String shortUrl, HttpServletRequest request) {
+    Url url = urlService.getOriginalUrl(shortUrl);
+
+    // Publish click event to Kafka (async, non-blocking)
+    kafkaTemplate.send("click-events", ClickEventDto.builder()
+        .urlId(url.getId())
+        .ipAddress(request.getRemoteAddr())
+        .userAgent(request.getHeader("User-Agent"))
+        .referrer(request.getHeader("Referer"))
+        .timestamp(LocalDateTime.now())
+        .build());
+
+    return new RedirectView(url.getOriginalUrl());
+}
+```
+
+2. **analytics-service** consumes from Kafka topic:
+```java
+@KafkaListener(topics = "click-events", groupId = "analytics-service")
+public void handleClickEvent(ClickEventDto event) {
+    analyticsService.trackClick(
+        event.getUrlId(),
+        event.getIpAddress(),
+        event.getUserAgent(),
+        event.getReferrer()
+    );
+}
+```
+
+**Benefits:**
+- Event-driven architecture
+- Asynchronous processing
+- Fault tolerance (events persisted in Kafka)
+- Scalability (add more consumers as needed)
+- Zero impact on redirect performance
+
+**TODO in RedirectController:**
+```java
+// TODO: Click tracking will be implemented in future Kafka integration phase
+// Will use Kafka to publish click events asynchronously
+```
+
+This follows enterprise microservices best practice: **high-volume operations should be asynchronous and event-driven**.
+
+---
+
 ## **PHASE 7: API Gateway (Day 3-4 - 4 hours)**
 
 ### **Step 7.1: Create API Gateway POM**

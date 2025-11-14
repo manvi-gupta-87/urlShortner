@@ -1,7 +1,11 @@
 package com.urlshortener.controller;
 
+import com.urlshortener.dto.UrlAnalyticsResponse;
 import com.urlshortener.dto.UrlRequestDto;
 import com.urlshortener.dto.UrlResponseDto;
+import com.urlshortener.lib.AnalyticsServiceClient;
+import com.urlshortener.model.Url;
+import com.urlshortener.repository.UrlRepository;
 import com.urlshortener.service.UrlService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +21,8 @@ import java.util.List;
 public class UrlController {
 
     private final UrlService urlService;
+    private final AnalyticsServiceClient analyticsServiceClient;
+    private final UrlRepository urlRepository;
 
     @PostMapping
     public ResponseEntity<UrlResponseDto> createShortUrl(@Valid @RequestBody UrlRequestDto request,
@@ -35,7 +41,24 @@ public class UrlController {
         return ResponseEntity.noContent().build();
     }
 
-    // TODO: Analytics endpoint will be added in Phase 6 when analytics-service is created
+    @GetMapping("/{shortCode}/stats")
+    public ResponseEntity<UrlAnalyticsResponse> getUrlStats(
+            @PathVariable String shortCode,
+            @RequestParam(defaultValue = "7") int days) {
+        // Fetch URL data from url-service database
+        Url url = urlRepository.findByShortUrl(shortCode)
+                .orElseThrow(() -> new RuntimeException("URL not found"));
+
+        // Call analytics-service via Feign client
+        return ResponseEntity.ok(
+            analyticsServiceClient.getUrlAnalytics(
+                url.getId(),
+                shortCode,
+                url.getOriginalUrl(),
+                days
+            )
+        );
+    }
 
     @GetMapping
     public ResponseEntity<List<UrlResponseDto>> getUserUrls(Principal principal) {
