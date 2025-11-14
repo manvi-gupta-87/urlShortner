@@ -1,0 +1,48 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: url-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/urlshortener
+    username: urlshortener_user
+    password: urlshortener_pass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  liquibase:
+    enabled: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+      auth-service:
+        connectTimeout: 2000  # Fail fast: 2 seconds to connect
+        readTimeout: 3000     # Fail fast: 3 seconds to read response
+
+url:
+  generator:
+    strategy: DISTRIBUTED

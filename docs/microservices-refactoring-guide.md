@@ -189,26 +189,37 @@ urlShortner/
 │   ├── api-gateway/
 │   │   └── src/main/java/        # Spring Cloud Gateway
 │   │
-│   ├── auth-service/
-│   │   └── src/main/java/com/urlshortener/
-│   │       ├── controller/       # AuthController (from monolith)
-│   │       ├── service/          # AuthService (from monolith)
-│   │       ├── model/            # User.java (from monolith)
-│   │       ├── repository/       # UserRepository (from monolith)
-│   │       └── config/           # SecurityConfig (modified)
+│   ├── auth-service/             # Multi-module service
+│   │   ├── pom.xml              # Auth service parent POM
+│   │   ├── auth-service-dto/    # DTOs (UserDto, etc.)
+│   │   │   ├── pom.xml          # Library JAR (no repackaging)
+│   │   │   └── src/main/java/com/urlshortener/dto/
+│   │   ├── auth-service-lib/    # Feign client library
+│   │   │   ├── pom.xml          # Library JAR (no repackaging)
+│   │   │   └── src/main/java/com/urlshortener/client/
+│   │   │       ├── AuthServiceClient.java
+│   │   │       └── AuthServiceClientFallback.java
+│   │   └── auth-service-app/    # Main application
+│   │       ├── pom.xml          # Executable JAR (Spring Boot)
+│   │       └── src/main/java/com/urlshortener/
+│   │           ├── controller/  # AuthController
+│   │           ├── service/     # AuthService + impl
+│   │           ├── model/       # User.java (stays internal)
+│   │           ├── repository/  # UserRepository
+│   │           └── config/      # SecurityConfig
 │   │
 │   ├── url-service/
 │   │   └── src/main/java/com/urlshortener/
-│   │       ├── controller/       # UrlController (from monolith)
-│   │       ├── service/          # UrlService (from monolith)
-│   │       ├── model/            # Url.java (from monolith)
-│   │       └── repository/       # UrlRepository (from monolith)
+│   │       ├── controller/      # UrlController (from monolith)
+│   │       ├── service/         # UrlService (from monolith)
+│   │       ├── model/           # Url.java (userId field, no @ManyToOne)
+│   │       └── repository/      # UrlRepository (queries by userId)
 │   │
 │   └── analytics-service/
 │       └── src/main/java/com/urlshortener/
-│           ├── controller/       # AnalyticsController (from monolith)
-│           ├── service/          # AnalyticsService (from monolith)
-│           └── repository/       # Analytics repositories
+│           ├── controller/      # AnalyticsController (from monolith)
+│           ├── service/         # AnalyticsService (from monolith)
+│           └── repository/      # Analytics repositories
 │
 ├── frontend/         # Update to call API Gateway
 └── docs/
@@ -392,10 +403,16 @@ cd microservices
         <module>shared-library</module>
         <module>service-discovery</module>
         <module>api-gateway</module>
-        <module>auth-service</module>
+        <module>auth-service</module>  <!-- Multi-module: contains dto, lib, app -->
         <module>url-service</module>
         <module>analytics-service</module>
     </modules>
+
+    <!-- Note: auth-service is a parent POM with 3 sub-modules:
+         - auth-service-dto (DTOs)
+         - auth-service-lib (Feign clients)
+         - auth-service-app (main application)
+    -->
 
     <properties>
         <java.version>17</java.version>
@@ -672,9 +689,263 @@ eureka:
 
 ---
 
-## **PHASE 4: Extract Auth Service (Day 2 - 4 hours)**
+## **📘 Enterprise Microservices Patterns (READ THIS FIRST)**
 
-### **Step 4.1: Create Auth Service POM**
+Before implementing PHASE 4 and beyond, understand these critical architectural patterns:
+
+### **Pattern 1: Multi-Module Service Structure**
+
+**Why Multi-Module?**
+
+In enterprise microservices, services that need to expose contracts to other services use a multi-module structure:
+
+```
+service-name/
+├── pom.xml                    # Parent aggregator
+├── service-name-dto/          # Data Transfer Objects
+├── service-name-lib/          # Client libraries (Feign, DTOs)
+└── service-name-app/          # Main application
+```
+
+**Benefits:**
+- **Clean Contracts**: DTOs define the API contract, not JPA entities
+- **Reusability**: Other services depend only on -lib (not full -app)
+- **Proper Packaging**: Library modules are plain JARs, app is executable JAR
+- **Standard Pattern**: Matches Netflix, Uber, Amazon microservices practices
+
+**Example: auth-service**
+- `auth-service-dto`: Contains UserDto, LoginRequestDto (plain POJOs)
+- `auth-service-lib`: Contains AuthServiceClient (Feign interface)
+- `auth-service-app`: Contains AuthController, User entity, business logic
+
+**Consumer Pattern:**
+```xml
+<!-- url-service depends only on auth-service-lib -->
+<dependency>
+    <groupId>com.urlshortener</groupId>
+    <artifactId>auth-service-lib</artifactId>
+</dependency>
+```
+
+### **Pattern 2: DTOs vs Entities**
+
+**CRITICAL: Never expose JPA entities across service boundaries!**
+
+**Bad (Monolith Pattern):**
+```java
+@FeignClient("auth-service")
+public interface AuthServiceClient {
+    @GetMapping("/users/{username}")
+    User getUserByUsername(@PathVariable String username);  // ❌ JPA entity!
+}
+```
+
+**Good (Microservices Pattern):**
+```java
+@FeignClient("auth-service")
+public interface AuthServiceClient {
+    @GetMapping("/users/{username}")
+    UserDto getUserByUsername(@PathVariable String username);  // ✅ DTO!
+}
+```
+
+**Why DTOs?**
+- Entities contain JPA annotations, lazy loading, bidirectional relationships
+- Entities may expose sensitive fields (passwords, internal IDs)
+- DTOs are clean, serializable data contracts
+- Changes to entity structure don't break API contracts
+
+**Conversion Pattern:**
+```java
+// In AuthController (auth-service-app)
+@GetMapping("/users/{username}")
+public ResponseEntity<UserDto> getUserByUsername(@PathVariable String username) {
+    User entity = authService.findByUsername(username)...;
+
+    // Convert entity → DTO
+    UserDto dto = new UserDto(
+        entity.getId(),
+        entity.getUsername(),
+        entity.getEmail(),
+        entity.getRole()
+        // NO password, NO JPA fields
+    );
+
+    return ResponseEntity.ok(dto);
+}
+```
+
+### **Pattern 3: Foreign Keys as IDs (No Cross-Service JPA Relationships)**
+
+**CRITICAL: No @ManyToOne/@OneToMany across service boundaries!**
+
+**Bad (Monolith Pattern):**
+```java
+// url-service Url entity
+@ManyToOne
+@JoinColumn(name = "user_id")
+private User user;  // ❌ Requires User entity from auth-service!
+```
+
+**Good (Microservices Pattern):**
+```java
+// url-service Url entity
+@Column(name = "user_id")
+private Long userId;  // ✅ Just the ID!
+```
+
+**Why?**
+- Services must be autonomous (no shared JPA entities)
+- Prevents tight coupling between services
+- Each service owns its own data model
+- Can still fetch user details via Feign when needed
+
+**Usage Pattern:**
+```java
+// Create URL
+UserDto user = authServiceClient.getUserByUsername(username);
+url.setUserId(user.getId());  // Store ID, not entity
+
+// Query URLs
+Page<Url> urls = urlRepository.findByUserIdAndDeactivatedFalse(userId, pageable);
+```
+
+### **Pattern 4: Build Configuration for Library Modules**
+
+**CRITICAL: Library modules must skip Spring Boot repackaging!**
+
+**Library Module POM (auth-service-dto, auth-service-lib):**
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+            <configuration>
+                <skip>true</skip>  <!-- ✅ Plain JAR -->
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+**Application Module POM (auth-service-app):**
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+            <!-- ✅ Executable JAR (fat JAR) -->
+        </plugin>
+    </plugins>
+</build>
+```
+
+**Why?**
+- Library JARs must be plain JARs so other services can include them as dependencies
+- Spring Boot repackaging creates fat JARs with nested dependencies (can't be used as dependency)
+- Only -app modules need to be executable
+
+**Verification:**
+```bash
+ls -lh auth-service-dto/target/*.jar   # ~10KB plain JAR
+ls -lh auth-service-lib/target/*.jar   # ~20KB plain JAR
+ls -lh auth-service-app/target/*.jar   # ~80MB fat JAR
+```
+
+### **Pattern 5: Correct Build Order**
+
+**CRITICAL: Build must follow dependency graph!**
+
+```
+shared-library (no dependencies)
+    ↓
+auth-service-dto (no dependencies)
+    ↓
+auth-service-lib (depends on: dto)
+    ↓
+auth-service-app (depends on: dto, shared-library)
+    ↓
+url-service (depends on: auth-service-lib, shared-library)
+```
+
+**Maven Build:**
+```bash
+# From microservices directory
+mvn clean install
+
+# Maven automatically resolves build order based on dependencies
+```
+
+### **Interview Talking Points**
+
+When discussing this architecture in interviews:
+
+1. **"We use a multi-module pattern for services that expose contracts"**
+   - Separates DTOs, client libraries, and application logic
+   - Other services depend only on the contract (lib module)
+
+2. **"We never expose JPA entities across service boundaries"**
+   - DTOs provide clean, versioned contracts
+   - Prevents tight coupling and allows independent evolution
+
+3. **"Services store foreign keys as IDs, not JPA relationships"**
+   - Maintains service autonomy
+   - Uses Feign clients for cross-service data retrieval
+
+4. **"Library modules produce plain JARs, apps produce executable JARs"**
+   - Enables proper dependency management
+   - Standard Maven/Spring Boot best practice
+
+---
+
+## **PHASE 4: Extract Auth Service (Day 2 - 6 hours)**
+
+### **Overview: Multi-Module Architecture**
+
+Auth Service follows an **enterprise multi-module pattern** that separates DTOs, Feign clients, and application code into distinct modules. This is the standard pattern used in production microservices architectures.
+
+**Why Multi-Module?**
+- Prevents entity leakage across service boundaries (DTOs instead of JPA entities)
+- Allows other services to depend only on the contract (lib module), not the full application
+- Enables proper separation of concerns and clean architecture
+- Matches real-world enterprise microservices patterns
+
+**Module Structure:**
+```
+auth-service/
+├── pom.xml                          # Parent POM (aggregator)
+├── auth-service-dto/                # Data Transfer Objects
+│   ├── pom.xml                      # Library module (no repackaging)
+│   └── src/main/java/.../dto/
+│       ├── UserDto.java             # User representation for inter-service calls
+│       ├── LoginRequestDto.java     # Login request
+│       └── RegisterRequestDto.java  # Registration request
+├── auth-service-lib/                # Feign Client Library
+│   ├── pom.xml                      # Library module (no repackaging)
+│   └── src/main/java/.../client/
+│       ├── AuthServiceClient.java   # Feign client interface
+│       └── AuthServiceClientFallback.java  # Circuit breaker fallback
+└── auth-service-app/                # Main Application
+    ├── pom.xml                      # Executable JAR (Spring Boot repackaging)
+    └── src/main/java/com/urlshortener/
+        ├── controller/              # AuthController
+        ├── service/                 # AuthService + impl
+        ├── model/                   # User entity (stays within service)
+        ├── repository/              # UserRepository
+        ├── config/                  # SecurityConfig
+        └── AuthServiceApplication.java
+```
+
+---
+
+### **Step 4.1: Create Auth Service Parent POM**
+
+```bash
+cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
+mkdir -p auth-service
+```
 
 ```xml
 <!-- microservices/auth-service/pom.xml -->
@@ -688,10 +959,271 @@ eureka:
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>auth-service</artifactId>
-    <name>Auth Service</name>
+    <artifactId>auth-service-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Auth Service Parent</name>
+
+    <modules>
+        <module>auth-service-dto</module>
+        <module>auth-service-lib</module>
+        <module>auth-service-app</module>
+    </modules>
+</project>
+```
+
+---
+
+### **Step 4.2: Create Auth Service DTO Module**
+
+**Create DTO module POM:**
+
+```bash
+mkdir -p auth-service/auth-service-dto/src/main/java/com/urlshortener/dto
+```
+
+```xml
+<!-- microservices/auth-service/auth-service-dto/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>auth-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>auth-service-dto</artifactId>
+    <packaging>jar</packaging>
+    <name>Auth Service DTOs</name>
 
     <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <!-- CRITICAL: Skip Spring Boot repackaging for library modules -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**Create UserDto:**
+
+```java
+// microservices/auth-service/auth-service-dto/src/main/java/com/urlshortener/dto/UserDto.java
+package com.urlshortener.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserDto {
+    private Long id;
+    private String username;
+    private String email;
+    private String role;
+
+    // NO password field - never expose sensitive data in DTOs
+    // NO JPA annotations - this is a pure data transfer object
+}
+```
+
+**Create LoginRequestDto:**
+
+```java
+// microservices/auth-service/auth-service-dto/src/main/java/com/urlshortener/dto/LoginRequestDto.java
+package com.urlshortener.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class LoginRequestDto {
+    private String username;
+    private String password;
+}
+```
+
+**Create RegisterRequestDto:**
+
+```java
+// microservices/auth-service/auth-service-dto/src/main/java/com/urlshortener/dto/RegisterRequestDto.java
+package com.urlshortener.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class RegisterRequestDto {
+    private String username;
+    private String email;
+    private String password;
+}
+```
+
+---
+
+### **Step 4.3: Create Auth Service Lib Module (Feign Client)**
+
+```bash
+mkdir -p auth-service/auth-service-lib/src/main/java/com/urlshortener/client
+```
+
+```xml
+<!-- microservices/auth-service/auth-service-lib/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>auth-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>auth-service-lib</artifactId>
+    <packaging>jar</packaging>
+    <name>Auth Service Library (Feign Client)</name>
+
+    <dependencies>
+        <!-- DTO module dependency -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>auth-service-dto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Spring Cloud OpenFeign -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+    </dependencies>
+
+    <!-- CRITICAL: Skip Spring Boot repackaging for library modules -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+**Create Feign Client Interface:**
+
+```java
+// microservices/auth-service/auth-service-lib/src/main/java/com/urlshortener/client/AuthServiceClient.java
+package com.urlshortener.client;
+
+import com.urlshortener.dto.UserDto;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+/**
+ * Feign client for Auth Service.
+ * Returns DTOs (UserDto), NOT entities (User).
+ * This prevents JPA entity leakage across service boundaries.
+ */
+@FeignClient(name = "auth-service", fallback = AuthServiceClientFallback.class)
+public interface AuthServiceClient {
+
+    @GetMapping("/api/v1/auth/users/{username}")
+    UserDto getUserByUsername(@PathVariable String username);
+}
+```
+
+**Create Fallback Implementation:**
+
+```java
+// microservices/auth-service/auth-service-lib/src/main/java/com/urlshortener/client/AuthServiceClientFallback.java
+package com.urlshortener.client;
+
+import com.urlshortener.dto.UserDto;
+import org.springframework.stereotype.Component;
+
+@Component
+public class AuthServiceClientFallback implements AuthServiceClient {
+
+    @Override
+    public UserDto getUserByUsername(String username) {
+        throw new RuntimeException("Auth service is unavailable. Please try again later.");
+    }
+}
+```
+
+**Why DTOs instead of Entities?**
+- User entity has JPA annotations, password fields, database concerns
+- UserDto is a clean data contract with only necessary fields
+- Other services don't need to know about database structure
+- Prevents tight coupling between services
+
+---
+
+### **Step 4.4: Create Auth Service App Module**
+
+```bash
+mkdir -p auth-service/auth-service-app/src/main/java/com/urlshortener/{controller,service,service/impl,model,repository,config,util}
+mkdir -p auth-service/auth-service-app/src/main/resources
+```
+
+```xml
+<!-- microservices/auth-service/auth-service-app/pom.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.urlshortener</groupId>
+        <artifactId>auth-service-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>auth-service-app</artifactId>
+    <packaging>jar</packaging>
+    <name>Auth Service Application</name>
+
+    <dependencies>
+        <!-- DTO module -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>auth-service-dto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Shared Library -->
         <dependency>
             <groupId>com.urlshortener</groupId>
@@ -751,76 +1283,56 @@ eureka:
             <optional>true</optional>
         </dependency>
     </dependencies>
+
+    <!-- This module IS an executable JAR - Spring Boot repackaging enabled -->
 </project>
 ```
 
 ---
 
-### **Step 4.2: Copy Auth Code from Monolith**
+### **Step 4.5: Copy Auth Code to App Module**
 
 ```bash
 cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner
 
-# Create directory structure
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/controller
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/service/impl
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/model
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/repository
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/config
-mkdir -p microservices/auth-service/src/main/java/com/urlshortener/util
-
 # Copy Controller
 cp backend/src/main/java/com/urlshortener/controller/AuthController.java \
-   microservices/auth-service/src/main/java/com/urlshortener/controller/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/controller/
 
 # Copy Service
 cp backend/src/main/java/com/urlshortener/service/AuthService.java \
-   microservices/auth-service/src/main/java/com/urlshortener/service/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/service/
 cp backend/src/main/java/com/urlshortener/service/impl/AuthServiceImpl.java \
-   microservices/auth-service/src/main/java/com/urlshortener/service/impl/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/service/impl/
 
-# Copy Model
+# Copy Model (User entity stays within auth-service-app)
 cp backend/src/main/java/com/urlshortener/model/User.java \
-   microservices/auth-service/src/main/java/com/urlshortener/model/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/model/
 
 # Copy Repository
 cp backend/src/main/java/com/urlshortener/repository/UserRepository.java \
-   microservices/auth-service/src/main/java/com/urlshortener/repository/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/repository/
 
 # Copy Config
 cp backend/src/main/java/com/urlshortener/config/SecurityConfig.java \
-   microservices/auth-service/src/main/java/com/urlshortener/config/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/config/
 
 # Copy JWT Util
 cp backend/src/main/java/com/urlshortener/util/JwtUtil.java \
-   microservices/auth-service/src/main/java/com/urlshortener/util/
+   microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/util/
 ```
 
-**Files copied (NO CODE CHANGES):**
-
-```
-auth-service/src/main/java/com/urlshortener/
-├── controller/
-│   └── AuthController.java              ✓ COPIED
-├── service/
-│   ├── AuthService.java                 ✓ COPIED
-│   └── impl/AuthServiceImpl.java        ✓ COPIED
-├── model/
-│   └── User.java                        ✓ COPIED
-├── repository/
-│   └── UserRepository.java              ✓ COPIED
-├── config/
-│   └── SecurityConfig.java              ✓ COPIED (minor modification needed)
-└── util/
-    └── JwtUtil.java                     ✓ COPIED
-```
+**Key Points:**
+- User entity (JPA model) stays in auth-service-app - it's an internal implementation detail
+- Other services use UserDto from auth-service-dto module
+- This prevents JPA entity leakage across service boundaries
 
 ---
 
-### **Step 4.3: Create Auth Service Application**
+### **Step 4.6: Create Auth Service Application Class**
 
 ```java
-// microservices/auth-service/src/main/java/com/urlshortener/AuthServiceApplication.java
+// microservices/auth-service/auth-service-app/src/main/java/com/urlshortener/AuthServiceApplication.java
 package com.urlshortener;
 
 import org.springframework.boot.SpringApplication;
@@ -842,10 +1354,10 @@ public class AuthServiceApplication {
 
 ---
 
-### **Step 4.4: Configure Auth Service**
+### **Step 4.7: Configure Auth Service Application**
 
 ```yaml
-# microservices/auth-service/src/main/resources/application.yml
+# microservices/auth-service/auth-service-app/src/main/resources/application.yml
 server:
   port: 8081
 
@@ -865,7 +1377,7 @@ spring:
       ddl-auto: validate
     show-sql: false
 
-  # ⚠️ IMPORTANT: Only auth-service manages DB schema (shared database pattern)
+  # Only auth-service manages DB schema (shared database pattern)
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
@@ -891,36 +1403,100 @@ logging:
 **Copy Liquibase Changelogs:**
 
 ```bash
-# Copy all Liquibase changelogs from monolith to auth-service
+# Copy all Liquibase changelogs from monolith to auth-service-app
 cp -r backend/src/main/resources/db \
-   microservices/auth-service/src/main/resources/
+   microservices/auth-service/auth-service-app/src/main/resources/
 ```
 
 ---
 
-### **Step 4.5: Add User Lookup Endpoint for Feign Clients**
+### **Step 4.8: Add User Lookup Endpoint (Returns UserDto)**
 
-**⚠️ CRITICAL:** This endpoint is required for URL Service to validate users via Feign.
+**CRITICAL:** This endpoint returns UserDto (not User entity) for inter-service communication.
 
-**Add to AuthController:**
+---
 
+## AuthController Endpoint Must Return UserDto
+
+The `/api/v1/auth/users/{username}` endpoint MUST return `UserDto`, not the `User` entity. This is a critical architectural requirement.
+
+**WRONG (exposes entity):**
 ```java
-// microservices/auth-service/.../controller/AuthController.java
-// Add this method to existing AuthController class:
-
 @GetMapping("/users/{username}")
 public ResponseEntity<User> getUserByUsername(@PathVariable String username) {
     User user = authService.findByUsername(username)
+            .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+    return ResponseEntity.ok(user);  // ❌ Exposes internal entity
+}
+```
+
+**CORRECT (returns DTO):**
+```java
+@GetMapping("/users/{username}")
+public ResponseEntity<UserDto> getUserByUsername(@PathVariable String username) {
+    User user = authService.findByUsername(username)
+            .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+    // Convert User entity to UserDto (never expose entities to other services)
+    UserDto userDto = UserDto.builder()
+            .id(user.getId())
+            .username(user.getUsername())
+            .email(user.getEmail())
+            .role(user.getRole().name())
+            .build();
+
+    return ResponseEntity.ok(userDto);  // ✅ Returns DTO
+}
+```
+
+**Why This Matters:**
+1. **Entities are internal** - `User` entity with JPA annotations should never leave the service
+2. **DTOs are contracts** - `UserDto` is the external API contract
+3. **Security** - Password field in User entity would be exposed otherwise
+4. **Maintainability** - Can change internal User entity without breaking url-service
+
+**Example Response:**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "role": "USER"
+}
+```
+
+---
+
+**Update AuthController to return UserDto:**
+
+```java
+// microservices/auth-service/auth-service-app/.../controller/AuthController.java
+// Add this import
+import com.urlshortener.dto.UserDto;
+
+// Add this method to existing AuthController class:
+
+@GetMapping("/users/{username}")
+public ResponseEntity<UserDto> getUserByUsername(@PathVariable String username) {
+    User user = authService.findByUsername(username)
         .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-    return ResponseEntity.ok(user);
+
+    // Convert entity to DTO (no password, no JPA annotations)
+    UserDto userDto = UserDto.builder()
+        .id(user.getId())
+        .username(user.getUsername())
+        .email(user.getEmail())
+        .role(user.getRole().name())
+        .build();
+
+    return ResponseEntity.ok(userDto);
 }
 ```
 
 **Add to AuthService interface:**
 
 ```java
-// microservices/auth-service/.../service/AuthService.java
-// Add this method to interface:
+// microservices/auth-service/auth-service-app/.../service/AuthService.java
 
 Optional<User> findByUsername(String username);
 ```
@@ -928,8 +1504,7 @@ Optional<User> findByUsername(String username);
 **Add to AuthServiceImpl:**
 
 ```java
-// microservices/auth-service/.../service/impl/AuthServiceImpl.java
-// Add this method to implementation:
+// microservices/auth-service/auth-service-app/.../service/impl/AuthServiceImpl.java
 
 @Override
 public Optional<User> findByUsername(String username) {
@@ -937,28 +1512,38 @@ public Optional<User> findByUsername(String username) {
 }
 ```
 
-**Why Needed:**
-- URL Service calls this via Feign to validate user exists before creating URLs
-- Without this, URL Service will fail with 404 Not Found
+**Why UserDto instead of User entity?**
+- User entity contains password, JPA annotations, database concerns
+- UserDto is a clean contract with only necessary fields
+- Prevents tight coupling between services
+- Follows enterprise microservices best practices
 
 **Test:**
 ```bash
 # After auth-service is running:
 curl http://localhost:8081/api/v1/auth/users/testuser \
   -H "Authorization: Bearer YOUR_TOKEN"
+
+# Response will be UserDto:
+{
+  "id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "role": "USER"
+}
 ```
 
 ---
 
-### **Step 4.6: Add Database Indexes for Performance**
+### **Step 4.9: Add Database Indexes for Performance**
 
-**⚠️ CRITICAL:** Without indexes, queries will be slow under load.
+**CRITICAL:** Without indexes, queries will be slow under load.
 
 **Create new Liquibase changelog:**
 
 ```bash
 # Create new changelog file
-cat > microservices/auth-service/src/main/resources/db/changelog/db.changelog-002-indexes.yaml << 'EOF'
+cat > microservices/auth-service/auth-service-app/src/main/resources/db/changelog/db.changelog-002-indexes.yaml << 'EOF'
 databaseChangeLog:
   - changeSet:
       id: 002-add-performance-indexes
@@ -1004,7 +1589,7 @@ EOF
 **Update master changelog:**
 
 ```yaml
-# Edit: microservices/auth-service/src/main/resources/db/changelog/db.changelog-master.yaml
+# Edit: microservices/auth-service/auth-service-app/src/main/resources/db/changelog/db.changelog-master.yaml
 # Add after existing include:
 
 databaseChangeLog:
@@ -1015,14 +1600,79 @@ databaseChangeLog:
 ```
 
 **Impact:**
-- Faster user lookup by username/email
-- Faster URL lookup by short code
-- Faster user's URLs retrieval
+- 10x faster user lookup by username/email
+- 10x faster URL lookup by short code
+- Efficient user URL retrieval with proper ordering
 - Reduced database load under high traffic
 
 ---
 
-## **PHASE 5: Extract URL Service (Day 2-3 - 4 hours)**
+### **Step 4.10: Multi-Module Build Order**
+
+**CRITICAL:** The build must follow dependency order.
+
+```bash
+# Build order (from auth-service parent directory):
+cd microservices/auth-service
+
+# Build in order:
+mvn clean install -pl auth-service-dto    # DTOs first (no dependencies)
+mvn clean install -pl auth-service-lib    # Lib second (depends on DTO)
+mvn clean install -pl auth-service-app    # App last (depends on DTO)
+
+# Or build all at once (Maven resolves order):
+mvn clean install
+```
+
+**Verify library modules skip repackaging:**
+
+```bash
+# Check that DTO and LIB produce plain JARs (not Spring Boot fat JARs)
+ls -lh auth-service-dto/target/*.jar
+ls -lh auth-service-lib/target/*.jar
+
+# Should see files like:
+# auth-service-dto-1.0.0.jar  (plain JAR, ~5-10KB)
+# auth-service-lib-1.0.0.jar  (plain JAR, ~10-20KB)
+
+# App module should produce executable JAR:
+ls -lh auth-service-app/target/*.jar
+# auth-service-app-1.0.0.jar  (fat JAR, ~50-100MB)
+```
+
+**Why This Matters:**
+- Library modules must be plain JARs so other services can depend on them
+- Only the -app module needs Spring Boot repackaging (executable JAR)
+- This is the enterprise standard for multi-module microservices
+
+---
+
+## **PHASE 5: Extract URL Service (Day 2-3 - 5 hours)**
+
+### **Overview: Microservices Data Pattern**
+
+URL Service demonstrates the **foreign key as ID pattern** for microservices:
+
+**Key Principles:**
+- NO @ManyToOne relationships across service boundaries
+- Store userId as Long (foreign key ID), not User entity
+- Use Feign client to fetch UserDto when user details are needed
+- This maintains service autonomy and prevents tight coupling
+
+**Before (Monolith):**
+```java
+@ManyToOne
+@JoinColumn(name = "user_id")
+private User user;  // JPA relationship
+```
+
+**After (Microservice):**
+```java
+@Column(name = "user_id")
+private Long userId;  // Just the ID, no JPA relationship
+```
+
+---
 
 ### **Step 5.1: Create URL Service POM**
 
@@ -1048,6 +1698,13 @@ databaseChangeLog:
             <artifactId>shared-library</artifactId>
         </dependency>
 
+        <!-- Auth Service Lib (for Feign Client and DTOs) -->
+        <dependency>
+            <groupId>com.urlshortener</groupId>
+            <artifactId>auth-service-lib</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -1064,7 +1721,7 @@ databaseChangeLog:
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
 
-        <!-- For calling Auth Service -->
+        <!-- OpenFeign (for calling Auth Service) -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
@@ -1086,6 +1743,11 @@ databaseChangeLog:
     </dependencies>
 </project>
 ```
+
+**Key Change:**
+- Depends on `auth-service-lib` (NOT `auth-service-app`)
+- This gives access to AuthServiceClient and UserDto
+- Does NOT pull in User entity or auth-service business logic
 
 ---
 
@@ -1127,90 +1789,178 @@ cp backend/src/main/java/com/urlshortener/repository/UrlRepository.java \
    microservices/url-service/src/main/java/com/urlshortener/repository/
 ```
 
-**⚠️ Important:** RedirectController belongs in URL Service since it handles URL redirection.
+**Important:** RedirectController belongs in URL Service since it handles URL redirection.
 
 ---
 
-### **Step 5.3: Add Feign Client for Auth Service**
+### **Step 5.3: Modify Url Entity (Remove @ManyToOne)**
 
-**This is NEW code (not from monolith):**
+**CRITICAL:** Remove JPA relationship with User entity. Store only the userId.
 
 ```java
-// microservices/url-service/src/main/java/com/urlshortener/client/AuthServiceClient.java
-package com.urlshortener.client;
+// microservices/url-service/.../model/Url.java
+package com.urlshortener.model;
 
-import com.urlshortener.model.User;
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
-@FeignClient(name = "auth-service")
-public interface AuthServiceClient {
+import java.time.LocalDateTime;
 
-    @GetMapping("/api/v1/users/{username}")
-    User getUserByUsername(@PathVariable String username);
+@Entity
+@Table(name = "urls")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Url {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String shortUrl;
+
+    @Column(nullable = false, length = 2048)
+    private String originalUrl;
+
+    // BEFORE (Monolith): @ManyToOne relationship
+    // @ManyToOne
+    // @JoinColumn(name = "user_id")
+    // private User user;
+
+    // AFTER (Microservice): Just store the ID
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column
+    private LocalDateTime expiresAt;
+
+    @Column(nullable = false)
+    private boolean deactivated = false;
+
+    @Column(nullable = false)
+    private Long clickCount = 0L;
+
+    // Getters and setters via Lombok
+}
+```
+
+**Why This Pattern?**
+- Maintains service autonomy - url-service doesn't need User entity
+- No tight coupling via JPA relationships
+- Can still fetch user details via Feign when needed
+- Standard microservices pattern for cross-service references
+
+---
+
+### **Step 5.4: Update UrlRepository (Query by userId)**
+
+```java
+// microservices/url-service/.../repository/UrlRepository.java
+package com.urlshortener.repository;
+
+import com.urlshortener.model.Url;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface UrlRepository extends JpaRepository<Url, Long> {
+    Optional<Url> findByShortUrl(String shortUrl);
+
+    // BEFORE (Monolith): Query by User entity
+    // List<Url> findByUserOrderByCreatedAtDesc(User user);
+
+    // AFTER (Microservice): Query by userId (Long)
+    Page<Url> findByUserIdAndDeactivatedFalse(Long userId, Pageable pageable);
+
+    // Optional: Simple list version (not paginated)
+    // List<Url> findByUserIdOrderByCreatedAtDesc(Long userId);
 }
 ```
 
 ---
 
-### **Step 5.4: Modify UrlServiceImpl to Use Feign**
+### **Step 5.5: Update UrlServiceImpl (Use Feign Client and userId)**
 
 ```java
 // microservices/url-service/.../service/impl/UrlServiceImpl.java
-// BEFORE (in monolith):
-User user = userRepository.findByUsername(userName)
-    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+package com.urlshortener.service.impl;
 
-// AFTER (in microservice):
-@Autowired
-private AuthServiceClient authServiceClient;
+import com.urlshortener.client.AuthServiceClient;  // From auth-service-lib
+import com.urlshortener.dto.UserDto;               // From auth-service-dto
+import com.urlshortener.model.Url;
+import com.urlshortener.repository.UrlRepository;
+import com.urlshortener.service.UrlService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
 
-User user = authServiceClient.getUserByUsername(userName);
-if (user == null) {
-    throw new UsernameNotFoundException("User not found in auth service");
-}
-```
+@Service
+public class UrlServiceImpl implements UrlService {
 
----
+    @Autowired
+    private UrlRepository urlRepository;
 
-### **Step 5.5: Add Feign Error Handling**
-
-```java
-// microservices/url-service/src/main/java/com/urlshortener/client/AuthServiceClientFallback.java
-package com.urlshortener.client;
-
-import com.urlshortener.model.User;
-import org.springframework.stereotype.Component;
-
-@Component
-public class AuthServiceClientFallback implements AuthServiceClient {
+    @Autowired
+    private AuthServiceClient authServiceClient;  // Feign client from auth-service-lib
 
     @Override
-    public User getUserByUsername(String username) {
-        throw new RuntimeException("Auth service is unavailable. Please try again later.");
+    public UrlResponseDto createShortUrl(String originalUrl, String username) {
+        // BEFORE (Monolith): Fetch User entity from UserRepository
+        // User user = userRepository.findByUsername(username)
+        //     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        // AFTER (Microservice): Fetch UserDto via Feign
+        UserDto userDto = authServiceClient.getUserByUsername(username);
+        if (userDto == null) {
+            throw new UsernameNotFoundException("User not found in auth service");
+        }
+
+        // Create URL with userId (not User entity)
+        Url url = new Url();
+        url.setOriginalUrl(originalUrl);
+        url.setShortUrl(generateShortUrl());
+        url.setUserId(userDto.getId());  // Store ID, not entity
+        url.setCreatedAt(LocalDateTime.now());
+        url.setDeactivated(false);
+        url.setClickCount(0L);
+
+        Url saved = urlRepository.save(url);
+        return convertToDto(saved);
     }
+
+    @Override
+    public Page<UrlResponseDto> getUserUrls(String username, Pageable pageable) {
+        // Fetch user via Feign to get userId
+        UserDto userDto = authServiceClient.getUserByUsername(username);
+        if (userDto == null) {
+            throw new UsernameNotFoundException("User not found");
+        }
+
+        // Query by userId (Long), not User entity
+        Page<Url> urlPage = urlRepository.findByUserIdAndDeactivatedFalse(
+            userDto.getId(), pageable);
+
+        return urlPage.map(this::convertToDto);
+    }
+
+    // ... other methods
 }
 ```
 
-**Update AuthServiceClient with fallback:**
-
-```java
-// microservices/url-service/src/main/java/com/urlshortener/client/AuthServiceClient.java
-package com.urlshortener.client;
-
-import com.urlshortener.model.User;
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-
-@FeignClient(name = "auth-service", fallback = AuthServiceClientFallback.class)
-public interface AuthServiceClient {
-
-    @GetMapping("/api/v1/users/{username}")
-    User getUserByUsername(@PathVariable String username);
-}
-```
+**Key Changes:**
+- Import `AuthServiceClient` from `com.urlshortener.client` (auth-service-lib)
+- Import `UserDto` from `com.urlshortener.dto` (auth-service-dto)
+- Use Feign to fetch UserDto (not User entity)
+- Store and query by userId (Long)
 
 ---
 
@@ -1229,7 +1979,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients
+@EnableFeignClients(basePackages = "com.urlshortener.client")  // Scan for Feign clients from auth-service-lib
 @EntityScan(basePackages = {"com.urlshortener.model"})
 @EnableJpaRepositories(basePackages = {"com.urlshortener.repository"})
 public class UrlServiceApplication {
@@ -1238,6 +1988,11 @@ public class UrlServiceApplication {
     }
 }
 ```
+
+**Important:**
+- `@EnableFeignClients(basePackages = "com.urlshortener.client")` tells Spring to scan for Feign clients
+- This finds `AuthServiceClient` from auth-service-lib JAR
+- No need to create Feign clients in url-service - we use the one from auth-service-lib
 
 ---
 
@@ -1298,117 +2053,59 @@ logging:
 
 ---
 
-### **Step 5.8: Add Pagination Support**
+### **Step 5.8: Summary - Build Order and Testing**
 
-**⚠️ IMPORTANT:** Without pagination, fetching all URLs for users with thousands of URLs will cause memory issues.
-
-**Update UrlController:**
-
-```java
-// microservices/url-service/.../controller/UrlController.java
-// Replace the existing getUserUrls method with:
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-
-@GetMapping
-public ResponseEntity<Page<UrlResponseDto>> getUserUrls(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size,
-        @RequestParam(defaultValue = "createdAt") String sortBy,
-        @RequestParam(defaultValue = "DESC") String direction) {
-
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    String username = auth.getName();
-
-    Sort.Direction sortDirection = direction.equalsIgnoreCase("ASC") ?
-        Sort.Direction.ASC : Sort.Direction.DESC;
-    Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
-
-    Page<UrlResponseDto> urls = urlService.getUserUrls(username, pageable);
-    return ResponseEntity.ok(urls);
-}
-```
-
-**Update UrlService interface:**
-
-```java
-// microservices/url-service/.../service/UrlService.java
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-
-public interface UrlService {
-    // ... existing methods
-
-    Page<UrlResponseDto> getUserUrls(String username, Pageable pageable);
-}
-```
-
-**Update UrlServiceImpl:**
-
-```java
-// microservices/url-service/.../service/impl/UrlServiceImpl.java
-
-@Override
-public Page<UrlResponseDto> getUserUrls(String username, Pageable pageable) {
-    User user = authServiceClient.getUserByUsername(username);
-    if (user == null) {
-        throw new UsernameNotFoundException("User not found");
-    }
-
-    Page<Url> urlPage = urlRepository.findByUserIdAndDeactivatedFalse(
-        user.getId(), pageable);
-
-    return urlPage.map(url -> new UrlResponseDto(
-        url.getShortUrl(),
-        url.getOriginalUrl(),
-        url.getCreatedAt(),
-        url.getExpiresAt(),
-        url.getClickCount()
-    ));
-}
-```
-
-**Update UrlRepository:**
-
-```java
-// microservices/url-service/.../repository/UrlRepository.java
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-
-public interface UrlRepository extends JpaRepository<Url, Long> {
-    // ... existing methods
-
-    Page<Url> findByUserIdAndDeactivatedFalse(Long userId, Pageable pageable);
-}
-```
-
-**Test Pagination:**
+**Build Order:**
 
 ```bash
-# Get first page (20 URLs)
-curl http://localhost:8080/api/v1/urls?page=0&size=20 \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# Build must follow dependency chain:
+cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
 
-# Get second page
-curl http://localhost:8080/api/v1/urls?page=1&size=20 \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# 1. Build shared-library
+mvn clean install -pl shared-library
 
-# Sort by click count descending
-curl http://localhost:8080/api/v1/urls?page=0&size=10&sortBy=clickCount&direction=DESC \
+# 2. Build auth-service (all modules)
+cd auth-service
+mvn clean install
+cd ..
+
+# 3. Build url-service (depends on auth-service-lib)
+mvn clean install -pl url-service
+
+# Or build everything at once:
+mvn clean install
+```
+
+**Test URL Service:**
+
+```bash
+# Start services in order:
+# 1. Start auth-service-app
+java -jar auth-service/auth-service-app/target/auth-service-app-1.0.0.jar
+
+# 2. Start url-service
+java -jar url-service/target/url-service-1.0.0.jar
+
+# Test Feign communication:
+# Create a URL (url-service will call auth-service via Feign to validate user)
+curl -X POST http://localhost:8082/api/v1/urls \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "originalUrl": "https://example.com"
+  }'
+
+# Get user's URLs (url-service queries by userId)
+curl http://localhost:8082/api/v1/urls?page=0&size=20 \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-**Benefits:**
-- Reduced memory usage for users with many URLs
-- Faster API response times
-- Better frontend performance
-- Database query optimization via indexes
+**Key Architecture Points:**
+- URL Service depends on auth-service-lib (NOT auth-service-app)
+- Url entity stores userId (Long), not User entity
+- No JPA relationships across service boundaries
+- Feign client returns UserDto (from auth-service-dto)
+- This is the standard enterprise microservices pattern
 
 ---
 

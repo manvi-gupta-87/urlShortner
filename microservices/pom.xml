@@ -22,9 +22,9 @@
         <module>shared-library</module>
         <module>service-discovery</module>
         <module>auth-service</module>
+        <module>url-service</module>
         <!-- TODO: Uncomment as services are created -->
         <!-- <module>api-gateway</module> -->
-        <!-- <module>url-service</module> -->
         <!-- <module>analytics-service</module> -->
     </modules>
 
