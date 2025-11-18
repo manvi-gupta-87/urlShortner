@@ -13,10 +13,13 @@
 3. [Database Strategies](#database-strategies)
 4. [Resilience Patterns](#resilience-patterns)
 5. [Traffic Management](#traffic-management)
-6. [Monitoring & Observability](#monitoring--observability)
-7. [Build & Deployment](#build--deployment)
-8. [Real Interview Scenarios](#real-interview-scenarios)
-9. [Quick Interview Tips](#quick-interview-tips)
+6. [API Gateway & Service Mesh](#api-gateway--service-mesh)
+7. [Reactive Programming](#reactive-programming)
+8. [Monitoring & Observability](#monitoring--observability)
+9. [Build & Deployment](#build--deployment)
+10. [Kubernetes & Helm Deployment](#kubernetes--helm-deployment)
+11. [Real Interview Scenarios](#real-interview-scenarios)
+12. [Quick Interview Tips](#quick-interview-tips)
 
 ---
 
@@ -321,6 +324,651 @@ curl -X PUT "http://gateway/admin/feature-flags/use-auth-microservice/percentage
 
 ---
 
+### Q11.1: What is Active-Active setup with GSLB?
+
+**Short Answer:**
+
+**Active-Active** = Running your application in **multiple data centers simultaneously**, where all data centers actively serve traffic.
+
+**GSLB (Global Server Load Balancer)** = DNS-based intelligent router that directs users to the best data center.
+
+**Architecture:**
+
+```
+User Request
+    ↓
+GSLB (DNS-based routing)
+    ↓
+Routes based on: Location, Health, Load, Performance
+    ↓
+┌─────────────┬─────────────┬─────────────┐
+│   US-East   │   US-West   │   Europe    │
+│   (Active)  │   (Active)  │   (Active)  │
+└─────────────┴─────────────┴─────────────┘
+```
+
+**GSLB Routing Strategies:**
+
+| Strategy | How it Works | Example |
+|----------|-------------|---------|
+| **Geographic** | Route to nearest DC | Mumbai user → India DC |
+| **Health-based** | Route to healthy DCs only | DC fails → auto-switch to backup |
+| **Load-based** | Route to DC with capacity | 80% full DC → lower priority |
+| **Performance-based** | Route to fastest DC | 50ms DC preferred over 200ms DC |
+
+**Active-Active vs Active-Passive:**
+
+| Aspect | Active-Active | Active-Passive |
+|--------|---------------|----------------|
+| **Traffic** | All DCs serve traffic | Only primary serves |
+| **Failover** | Instant (already active) | 30-60 seconds |
+| **Utilization** | High (all DCs used) | 50% (backup idle) |
+| **Latency** | Low (nearest DC) | Variable (single location) |
+| **Cost** | Higher | Lower |
+| **Use Case** | Global apps (Netflix, Amazon) | DR backup only |
+
+**Benefits:**
+
+- **Low latency**: Users routed to nearest DC (5ms vs 250ms)
+- **High availability**: If one DC fails, others handle traffic instantly
+- **No downtime**: All DCs running continuously
+- **99.99% uptime**: ~43 minutes downtime/year
+
+**Example - Netflix:**
+
+```
+User in Mumbai opens Netflix
+    ↓
+GSLB: Check Mumbai DC (healthy ✓)
+    ↓
+Route to Mumbai DC (5ms latency)
+
+If Mumbai DC fails:
+    ↓
+GSLB: Detect failure within 10 seconds
+    ↓
+Auto-route to Singapore DC (20ms latency)
+```
+
+**Popular GSLB Technologies:**
+
+- **AWS Route 53** - Health checks + geographic routing
+- **Cloudflare Load Balancer** - Global CDN with GSLB
+- **Azure Traffic Manager** - Azure's GSLB service
+- **F5 BIG-IP DNS** - Enterprise hardware solution
+
+**Strong Interview Answer:**
+> "Active-Active with GSLB is the industry standard for global applications. It means running your application in multiple data centers simultaneously, where all DCs actively serve traffic. GSLB is a DNS-based load balancer that intelligently routes users to the best data center based on geographic location, health status, load, and performance. For example, Netflix uses this - a user in Mumbai gets routed to the India DC for low latency, but if that DC fails, GSLB automatically redirects to Singapore DC within seconds. This provides instant failover, low latency worldwide, and 99.99% uptime. Companies like Amazon and Google use AWS Route 53 or similar GSLB solutions. It's more expensive than Active-Passive because all DCs are running, but it's essential for global user experience."
+
+---
+
+### Q11.2: What are the issues with Active-Passive approach?
+
+**Short Answer:**
+
+Active-Passive has **critical limitations** that make it unsuitable for modern global applications:
+
+**Key Issues:**
+
+| Issue | Impact | Example |
+|-------|--------|---------|
+| **50% Resource Waste** | Passive DC sits idle while costing money | Paying for 200 servers, using only 100 |
+| **Slow Failover (30-60s)** | Users experience downtime during failure | DNS propagation + app startup delay |
+| **High Latency for Remote Users** | Single DC location | Singapore user → US DC = 250ms latency |
+| **Untested Failover** | Passive DC may have stale configs/data | Discover issues during actual disaster |
+| **Limited Capacity** | 50% capacity during failover | 100K req/sec → 50K req/sec (may need load shedding) |
+| **No Load Distribution** | Primary can overload while passive idle | Black Friday: Primary struggles, passive unused |
+
+**Failover Comparison:**
+
+```
+Active-Passive:
+DC Fails → Monitoring detects (5s) → DNS update (10s) →
+DNS propagates (30-60s) → Scale up passive (30s)
+= 1 minute downtime
+
+Active-Active:
+DC Fails → GSLB health check (10s) → Instant reroute
+= 10 seconds, zero downtime
+```
+
+**When Active-Passive is Still Acceptable:**
+
+- ✅ Small companies (can't afford multi-DC)
+- ✅ Internal tools (1 min downtime acceptable)
+- ✅ Non-critical systems (logs, batch jobs)
+- ✅ Regulatory constraints (data must stay in one region)
+
+**Strong Interview Answer:**
+> "Active-Passive has several critical issues. First, it wastes 50% of infrastructure - you're paying for a passive DC that serves no traffic. Second, failover is slow at 30-60 seconds due to DNS propagation and application startup time. Third, global users experience high latency because all traffic goes to one location - a Singapore user hitting a US-based primary DC gets 250ms latency instead of 20ms with a local DC. Fourth, there's untested failover risk - the passive DC might have stale configurations or data issues you only discover during an actual disaster. Finally, you have limited capacity during failover since the passive DC typically has 50% capacity. This is why modern companies like Netflix and Amazon use Active-Active with GSLB - it provides instant failover, low latency worldwide, and no wasted resources. Active-Passive is only acceptable for small companies, internal tools, or systems where regulatory constraints require data to stay in one region."
+
+---
+
+### Q11.3: How is data synchronized between datacenters in Active-Active and Active-Passive setups?
+
+**Short Answer:**
+
+Data synchronization complexity is the **biggest challenge** in multi-datacenter architectures.
+
+**Active-Passive Synchronization (Simpler):**
+
+```
+Primary DC                    Passive DC
+┌──────────────┐             ┌──────────────┐
+│ Master DB    │ ──────────> │ Replica DB   │
+│ (Read/Write) │   One-way   │ (Read-only)  │
+└──────────────┘             └──────────────┘
+```
+
+| Method | How It Works | Lag | Use Case |
+|--------|--------------|-----|----------|
+| **Async Replication** | Write to primary, replicate later | 1-60 seconds | Most systems |
+| **Sync Replication** | Write to both, wait for confirmation | 0 seconds (slower writes) | Financial systems |
+| **Log Shipping** | Ship transaction logs periodically | Minutes to hours | Legacy DR |
+
+**Active-Active Synchronization (Complex):**
+
+**1. Multi-Master Replication**
+```
+US DC                         EU DC
+┌──────────────┐             ┌──────────────┐
+│ Master DB    │ <─────────> │ Master DB    │
+│ (Read/Write) │  Bi-Sync    │ (Read/Write) │
+└──────────────┘             └──────────────┘
+
+Conflict: Both DCs update same record simultaneously
+Resolution: Last Write Wins, CRDT, or App-level merge
+```
+
+**2. Regional Sharding (Netflix Model)**
+```
+US DC: Owns US user data (master)
+EU DC: Owns EU user data (master)
+Each DC replicates to others (read-only)
+Result: No conflicts (different data ownership)
+```
+
+**3. Event Sourcing with Kafka**
+```
+All changes → Kafka events → All DCs consume events
+Result: Eventual consistency (1-5 second lag)
+Example: Uber uses this for trip updates
+```
+
+**Conflict Resolution Strategies:**
+
+| Strategy | Description | Example |
+|----------|-------------|---------|
+| **Last Write Wins (LWW)** | Latest timestamp wins | Price update: $200 (later) beats $100 |
+| **Causality Tracking** | Vector clocks determine order | Cassandra, Riak |
+| **Application Merge** | Code merges both updates | Shopping cart: merge items |
+| **Regional Authority** | One DC owns specific data | US DC owns US customers |
+
+**Real-World Examples:**
+
+- **Netflix**: Cassandra multi-master, eventual consistency, 1-2 sec lag
+- **Amazon DynamoDB**: Multi-region tables, async replication, <1 sec lag
+- **Google Spanner**: Synchronous with atomic clocks, 200-500ms writes
+- **Banks**: Active-Passive, sync replication, zero data loss
+
+**Strong Interview Answer:**
+> "Data synchronization is fundamentally different between Active-Passive and Active-Active. Active-Passive uses simple one-way replication from master to replica, typically with 1-60 seconds of lag using asynchronous replication, or zero lag with synchronous replication at the cost of slower writes. The challenge is potential data loss if the primary fails before replication completes. Active-Active is much more complex because you have multiple masters accepting writes simultaneously. This creates the conflict problem - what happens when two datacenters update the same record at the same time? Companies solve this with different strategies: Netflix uses Last Write Wins with Cassandra where the latest timestamp wins, companies like Uber use event sourcing with Kafka where all changes are events consumed by all datacenters, and some use regional sharding where US users are owned by the US datacenter and EU users by the EU datacenter to avoid conflicts entirely. Google Spanner takes a different approach using atomic clocks and synchronous replication for strong consistency, but this adds 200-500ms write latency. The choice depends on your consistency requirements - financial systems need sync replication and zero data loss, while social media can tolerate 1-5 second eventual consistency for better performance."
+
+---
+
+### Q11.4: Why does API Gateway need JWT validation? Shouldn't only Auth-Service handle JWT?
+
+**Short Answer:**
+
+API Gateway **validates** JWT tokens, Auth-Service **generates** them. This is called **"Authentication at the Edge"** pattern.
+
+**The Two Roles:**
+
+| Service | Has JwtUtil? | Purpose |
+|---------|-------------|---------|
+| **Auth-Service** | ✅ Yes | **Generate** tokens when user logs in |
+| **API Gateway** | ✅ Yes | **Validate** tokens on every request |
+| **URL-Service** | ❌ No | Trusts Gateway already validated |
+| **Analytics-Service** | ❌ No | Trusts Gateway already validated |
+
+**The Flow:**
+
+```
+1. User Login (Token Generation)
+   Client → API Gateway → Auth-Service
+   Auth-Service: Generates JWT with secret key
+   Returns: { "token": "eyJhbGc..." }
+
+2. Every Other Request (Token Validation)
+   Client → API Gateway (validates token locally)
+         → URL-Service (if valid)
+
+   API Gateway blocks invalid tokens before reaching services
+```
+
+**Why Not Call Auth-Service for Validation?**
+
+**Bad Approach (Anti-pattern):**
+```
+Every Request:
+Client → API Gateway → Auth-Service (validate token?)
+                    → URL-Service (actual request)
+
+Problems:
+❌ Auth-Service becomes bottleneck (1000 req/sec = 1000 validations)
+❌ Extra network hop adds 50-100ms latency
+❌ Auth-Service can go down, blocking all requests
+```
+
+**Good Approach (Industry Standard):**
+```
+Every Request:
+Client → API Gateway (validate locally with JwtUtil)
+      → URL-Service (if valid)
+
+Benefits:
+✅ Fast validation (<1ms, just cryptographic signature check)
+✅ Auth-Service only handles login/register
+✅ No bottleneck, high performance
+```
+
+**Key Insight: JWT Tokens are Self-Contained**
+
+JWT tokens are **cryptographically signed**:
+- Anyone with the **secret key** can validate them
+- No database lookup needed
+- No network call to Auth-Service needed
+- Just verify the signature matches
+
+**Both services use the SAME secret key:**
+```yaml
+# Auth-Service application.yml
+jwt:
+  secret: mySecretKey123  # Signs token with this
+
+# API Gateway application.yml
+jwt:
+  secret: mySecretKey123  # Verifies signature with same secret
+```
+
+**Comparison: With vs Without Gateway Validation**
+
+| Approach | Where JWT Validation Happens | Performance |
+|----------|----------------------------|-------------|
+| **Without Gateway** | Every microservice validates | Each service needs JwtUtil (code duplication) |
+| **With Gateway (Correct)** | Only Gateway validates | Services trust Gateway, no duplication |
+
+**Real-World Example: Netflix**
+
+```
+Netflix Architecture:
+- Auth Service: Issues JWT tokens (login/signup only)
+- API Gateway (Zuul): Validates JWT on EVERY request
+- 50+ Microservices: Don't validate JWT (Gateway already did)
+
+Result:
+- 10,000 requests/sec validated at Gateway
+- Zero load on Auth-Service (only login/register traffic)
+- Microservices focus on business logic
+```
+
+**What Happens if Gateway Doesn't Validate?**
+
+```
+Without Gateway Validation:
+- URL-Service needs JwtUtil ❌
+- Analytics-Service needs JwtUtil ❌
+- User-Service needs JwtUtil ❌
+- Payment-Service needs JwtUtil ❌
+- 50 other services need JwtUtil ❌
+
+Problems:
+- Code duplication across 50 services
+- Each service must handle invalid tokens
+- Inconsistent validation logic
+- Security vulnerabilities if one service forgets
+```
+
+**Strong Interview Answer:**
+> "API Gateway needs JWT validation because of the 'Authentication at the Edge' pattern - we validate authentication once at the entry point rather than in every microservice. While Auth-Service generates JWT tokens during login, the API Gateway validates them on every subsequent request. This is efficient because JWT tokens are self-contained and cryptographically signed - anyone with the secret key can validate them locally without calling Auth-Service. If we had to call Auth-Service for validation on every request, it would become a bottleneck handling thousands of validation requests per second and add 50-100ms latency per request. Instead, the Gateway validates tokens in under 1ms using cryptographic signature verification. This is how Netflix and other companies handle millions of requests - Auth-Service only handles login/register traffic, while the Gateway validates all subsequent requests. Both services share the same JWT secret key, so the Gateway can verify that tokens were signed by Auth-Service. The downstream microservices like URL-Service and Analytics-Service don't need JWT validation at all - they trust that if a request reached them through the Gateway, it's already authenticated. This eliminates code duplication and ensures consistent security across all services."
+
+---
+
+## API Gateway & Service Mesh
+
+### Q14: What is the difference between API Gateway and Service Mesh?
+
+**Short Answer:**
+
+They serve **different layers** and are **complementary**, not competing solutions.
+
+| Aspect | API Gateway | Service Mesh |
+|--------|-------------|--------------|
+| **Traffic Direction** | North-South (External → Services) | East-West (Service ↔ Service) |
+| **Purpose** | Single entry point for clients | Inter-service communication management |
+| **Layer** | Edge/Perimeter | Internal network |
+| **Main Functions** | Auth, rate limiting, routing, API versioning | mTLS, observability, traffic management, resilience |
+| **Users** | External clients (mobile, web, APIs) | Internal services only |
+| **Examples** | Kong, AWS API Gateway, Spring Cloud Gateway | Istio, Linkerd, Consul Connect |
+| **Code Changes** | May require endpoint definitions | Zero code changes |
+
+**Visual Representation:**
+
+```
+[Mobile App]  [Web Browser]  [Third-party API]
+      ↓              ↓                ↓
+═══════════════════════════════════════════════
+        API GATEWAY (North-South)
+═══════════════════════════════════════════════
+              ↓
+┌─────────────────────────────────────────────┐
+│         SERVICE MESH (East-West)            │
+│                                             │
+│  [url-service] ←──────→ [analytics-service] │
+│       ↕                        ↕            │
+│  [auth-service] ←──────→ [user-service]     │
+└─────────────────────────────────────────────┘
+```
+
+**Strong Interview Answer:**
+> "API Gateway and Service Mesh solve different problems and are used together in production systems. API Gateway sits at the edge, handling north-south traffic from external clients to services - it's the single entry point for authentication, rate limiting, API versioning, and request routing. Service Mesh operates internally, managing east-west traffic between services - it provides automatic mTLS encryption, distributed tracing, circuit breaking, and retry logic without code changes. For example, in our URL shortener, the API Gateway would handle mobile app requests and route them to the appropriate microservice, while the Service Mesh would secure and monitor the call from url-service to analytics-service. Companies like Uber and Airbnb use both: Kong/Zuul at the edge and Istio/Linkerd internally."
+
+---
+
+### Q14.1: Where does routing actually happen in modern API Gateway architecture?
+
+**Short Answer:**
+
+**Common Misconception:** Developers expect routing code in the Gateway application.
+**Reality:** Routing is **externalized** from application code.
+
+**What API Gateway Code Actually Contains:**
+
+Modern Gateway applications focus on **cross-cutting concerns**, not routing:
+- Authentication and authorization (token validation, permissions)
+- Security (fraud detection, rate limiting, threat protection)
+- Configuration management
+- API discovery and metadata
+- Request validation
+
+**Where Routing Really Lives:**
+
+| Approach | Implementation | Managed By |
+|----------|---------------|------------|
+| **Declarative Config** | YAML/properties files | DevOps |
+| **Cloud Load Balancers** | AWS ALB, Azure Gateway | Platform team |
+| **Kubernetes Ingress** | Ingress controller YAML | Infrastructure team |
+| **API Management Platform** | Apigee, Kong, MuleSoft | API team |
+| **Service Mesh** | Istio VirtualService, Linkerd | DevOps/SRE |
+
+**Why This Separation?**
+
+**Benefits:**
+- Change routes without code changes or redeployment
+- Real-time configuration updates
+- DevOps manages routing independently
+- Developers focus on business logic and security
+
+**Key Principle:**
+Routing = **Deployment Concern** (infrastructure)
+Security/Validation = **Development Concern** (application code)
+
+**Example: Enterprise Bank Architecture**
+
+```
+Client Request
+    ↓
+[Load Balancer/Ingress] ← Routes based on path (infrastructure)
+    ↓
+[Gateway Controller] ← Validates token, checks permissions (code)
+    ↓
+[Backend Services]
+```
+
+**Strong Interview Answer:**
+> "In modern architectures, routing is externalized from the Gateway application code. The Gateway controller focuses on cross-cutting concerns like authentication, authorization, and security validation. Actual routing happens through declarative configuration - YAML files for Spring Cloud Gateway, Kubernetes Ingress controllers, cloud load balancers like AWS ALB, or API management platforms like Apigee. This separation means route changes don't require code changes or redeployment. For example, at companies like Deutsche Bank, you'll see Gateway controllers with methods for token validation and permission checks, but no routing logic - that's managed separately by DevOps through infrastructure configuration. This is the current industry standard because routing is a deployment concern, not a development concern."
+
+---
+
+### Q15: What is a Service Mesh and why do we use it?
+
+**Short Answer:**
+
+**Service Mesh** is an **infrastructure layer** that handles service-to-service communication with automatic security, observability, and resilience.
+
+**Why Use It?**
+
+**Without Service Mesh:**
+```java
+// Every service needs this duplicated code
+@Configuration
+public class SecurityConfig {
+    // Setup SSL/TLS manually
+    // Configure retries manually
+    // Add tracing headers manually
+    // Implement circuit breakers manually
+}
+```
+
+**With Service Mesh:**
+```yaml
+# One-time configuration - applies to ALL services
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+spec:
+  mtls:
+    mode: STRICT  # All services auto-encrypted
+```
+
+**Key Benefits:**
+
+| Problem | Without Service Mesh | With Service Mesh |
+|---------|---------------------|-------------------|
+| **Security** | Write mTLS code in every service | Automatic encryption (zero code) |
+| **Retries** | Implement in every service | Configured once, applies everywhere |
+| **Tracing** | Manually propagate trace IDs | Automatic distributed tracing |
+| **Circuit Breaking** | Code circuit breakers per service | Infrastructure-level, consistent |
+| **Canary Deployments** | Complex custom logic | Simple config (10% v1, 90% v2) |
+| **Observability** | Different logging per team | Unified metrics across all services |
+
+**Popular Service Mesh Tools:**
+
+| Tool | Developed By | Market Share | Best For |
+|------|--------------|--------------|----------|
+| **Istio** | Google/IBM | 60% | Full-featured, enterprise |
+| **Linkerd** | Buoyant | 25% | Lightweight, simple |
+| **Consul Connect** | HashiCorp | 10% | Multi-cloud, hybrid |
+| **AWS App Mesh** | Amazon | 5% | AWS-native |
+
+**Strong Interview Answer:**
+> "Service Mesh is an infrastructure layer that manages service-to-service communication without requiring code changes. It solves the problem of duplicating security, resilience, and observability code across dozens of microservices. For example, instead of writing mTLS configuration in every service, I configure Istio once and all services automatically get encrypted communication. It also provides automatic distributed tracing, retry logic with exponential backoff, circuit breakers, and canary deployments via simple YAML configuration. This is critical at scale - companies like Uber and Lyft use service mesh to manage thousands of microservices. However, I wouldn't use it for small projects with 2-3 services due to operational complexity. The sweet spot is 10+ microservices where the benefits outweigh the infrastructure overhead."
+
+---
+
+### Q16: Can we use Service Mesh along with REST API and Kafka?
+
+**Short Answer:**
+
+**YES!** Service Mesh works **on top of** existing communication protocols, not as a replacement.
+
+**How They Work Together:**
+
+**Service Mesh + REST:**
+```java
+// Your code - NO CHANGES NEEDED
+@FeignClient(name = "analytics-service")
+public interface AnalyticsServiceClient {
+    @GetMapping("/api/v1/analytics/stats")
+    UrlAnalyticsResponse getStats(@RequestParam Long urlId);
+}
+
+// Service Mesh automatically adds:
+// - mTLS encryption
+// - Distributed tracing headers
+// - Retry logic (3 attempts)
+// - Circuit breaking
+// - Metrics collection
+```
+
+**Service Mesh + Kafka:**
+```java
+// Your code - NO CHANGES NEEDED
+@Service
+public class ClickTrackingService {
+    public void trackClick(ClickEvent event) {
+        kafkaTemplate.send("url-clicks", event);
+    }
+}
+
+// Service Mesh automatically adds:
+// - Encrypted connection to Kafka
+// - Connection monitoring
+// - Access control policies
+// - Network-level metrics
+```
+
+**Architecture Layers:**
+
+```
+┌─────────────────────────────────────┐
+│  Application Code (REST/Kafka)     │ ← You write this
+├─────────────────────────────────────┤
+│  Communication Protocol (HTTP/TCP)  │ ← How data moves
+├─────────────────────────────────────┤
+│  Service Mesh (Istio/Linkerd)      │ ← Infrastructure enhancement
+├─────────────────────────────────────┤
+│  Network Layer (TCP/IP)             │ ← Physical network
+└─────────────────────────────────────┘
+```
+
+**What Service Mesh Does NOT Replace:**
+
+| You Still Need | Service Mesh Does NOT Replace |
+|----------------|------------------------------|
+| REST API calls (Feign, RestTemplate) | ✅ Enhances with security/retries |
+| Kafka producers/consumers | ✅ Enhances with encryption/monitoring |
+| API endpoints (@GetMapping) | ✅ Enhances with observability |
+| Business logic | ✅ Infrastructure-only |
+
+**Strong Interview Answer:**
+> "Absolutely! Service Mesh is an infrastructure enhancement, not a communication protocol replacement. You still write REST API calls using Feign or RestTemplate, and use Kafka for async messaging. The service mesh operates at the network layer, transparently intercepting these calls to add mTLS encryption, distributed tracing, retries, and circuit breaking without any code changes. For example, when my url-service calls analytics-service via Feign, the service mesh proxy intercepts the HTTP request, encrypts it with mTLS, adds trace headers, and monitors latency - all invisible to my application code. The same applies to Kafka connections. This separation of concerns is powerful: developers focus on business logic, while infrastructure teams configure security and resilience policies centrally."
+
+---
+
+### Q17: What do Java developers need to know about Service Mesh?
+
+**Short Answer:**
+
+**You don't write code for service mesh** - it's infrastructure. But you should know:
+
+**1. Zero Code Changes Required**
+```java
+// This code works identically with or without service mesh
+@FeignClient(name = "analytics-service")
+public interface AnalyticsServiceClient {
+    @GetMapping("/api/v1/analytics/stats")
+    UrlAnalyticsResponse getStats(@RequestParam Long urlId);
+}
+```
+
+**2. You ARE Responsible For:**
+
+| Your Responsibility | Why It Matters |
+|---------------------|----------------|
+| **Health check endpoints** | Service mesh routes traffic based on health |
+| **Proper error handling** | Don't rely 100% on mesh retries |
+| **Timeouts in code** | Defense in depth with mesh timeouts |
+| **Propagating trace headers** | For distributed tracing to work |
+| **Graceful degradation** | Circuit breakers can fail fast |
+
+**Health Check Example:**
+```java
+@RestController
+public class HealthController {
+
+    @GetMapping("/health")
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("UP");
+    }
+
+    @GetMapping("/ready")
+    public ResponseEntity<String> ready() {
+        // Check DB connection, dependencies, etc.
+        if (database.isConnected()) {
+            return ResponseEntity.ok("READY");
+        }
+        return ResponseEntity.status(503).body("NOT_READY");
+    }
+}
+```
+
+**3. Debugging Changes:**
+
+**Without Service Mesh:**
+```
+Error: Connection refused to analytics-service:8080
+```
+
+**With Service Mesh:**
+```
+Error: upstream connect error or disconnect/reset before headers
+Circuit breaker: OPEN
+Transport failure reason: connection timeout
+```
+
+**Action:** Check BOTH logs:
+```bash
+# Your app logs
+kubectl logs my-service-pod -c my-service
+
+# Service mesh sidecar logs
+kubectl logs my-service-pod -c istio-proxy
+```
+
+**4. Performance Consideration:**
+
+Service mesh adds **1-5ms latency** per request (proxy overhead)
+
+```java
+// Still implement timeouts
+@FeignClient(name = "analytics-service")
+public interface AnalyticsServiceClient {
+
+    @GetMapping(value = "/api/v1/analytics/stats")
+    UrlAnalyticsResponse getStats(
+        @RequestParam Long urlId,
+        @RequestHeader("x-request-timeout") @DefaultValue("5000") int timeout
+    );
+}
+```
+
+**5. Local Development:**
+
+**Local (no service mesh):**
+```yaml
+# docker-compose.yml
+services:
+  url-service:
+    ports: ["8081:8081"]
+  analytics-service:
+    ports: ["8082:8082"]
+```
+
+**Production (with service mesh):**
+```yaml
+# kubernetes deployment
+metadata:
+  annotations:
+    sidecar.istio.io/inject: "true"
+```
+
+**Impact:** Test locally without mesh, but validate in staging WITH mesh.
+
+**Strong Interview Answer:**
+> "As a Java developer, I don't need to write code for service mesh - it's transparent infrastructure. However, I'm responsible for providing proper health check endpoints (/health and /ready) that the mesh uses for traffic routing. I still implement error handling, timeouts, and graceful degradation because defense in depth is critical - the mesh provides retries, but my code should handle failures appropriately. For debugging, I check both my application logs and the sidecar proxy logs since service mesh errors look different (e.g., 'circuit breaker OPEN' vs standard exceptions). I'm also aware that service mesh adds 1-5ms latency, which is usually negligible but important for tight latency requirements. Finally, I test locally without mesh but always validate in staging with mesh enabled, since network behavior differs between environments."
+
+---
+
 ## Monitoring & Observability
 
 ### Q12: What's the difference between monitoring and observability?
@@ -418,6 +1066,207 @@ When you forget `<skip>true</skip>` on a library:
 
 ---
 
+## Kubernetes & Helm Deployment
+
+### Q19: How are microservices deployed in enterprise environments?
+
+**Short Answer:**
+
+**Modern Standard:** Kubernetes with Helm Charts for package management
+
+**Deployment Stack:**
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **Container Runtime** | Docker | Package applications with dependencies |
+| **Orchestration** | Kubernetes (K8s) | Manage containers at scale |
+| **Package Manager** | Helm Charts | Deploy and version K8s resources |
+| **CI/CD** | GitHub Actions, Jenkins | Automate build and deployment |
+| **Monitoring** | Grafana + New Relic/Datadog | Observability and APM |
+| **Service Discovery** | K8s Service + DNS | Internal service communication |
+
+**Typical Repository Structure:**
+
+```
+devops-cicd-pipeline/
+├── helm/
+│   ├── auth-service-helm/
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml
+│   │   └── templates/
+│   ├── url-service-helm/
+│   └── analytics-service-helm/
+├── dockerfiles/
+├── .github/workflows/
+└── k8s/
+```
+
+**Why Kubernetes + Helm?**
+
+| Feature | Benefit |
+|---------|---------|
+| **Auto-scaling** | Scale pods based on CPU/memory |
+| **Self-healing** | Restart failed containers automatically |
+| **Rolling updates** | Zero-downtime deployments |
+| **Service discovery** | Built-in DNS for service-to-service calls |
+| **Load balancing** | Distribute traffic across pods |
+| **Config management** | ConfigMaps and Secrets |
+| **Version control** | Helm manages releases and rollbacks |
+
+**Strong Interview Answer:**
+> "In enterprise environments like Deutsche Bank, microservices are deployed on Kubernetes using Helm charts for package management. Each microservice has its own Helm chart with templates for Deployments, Services, ConfigMaps, and Ingress resources. The deployment pipeline uses GitHub Actions to build Docker images, run tests, and deploy to Kubernetes clusters. Helm manages different environments (dev, staging, prod) using separate values files. This provides auto-scaling, self-healing, rolling updates, and easy rollbacks. Monitoring is handled by Grafana for metrics visualization and New Relic for application performance monitoring. The architecture is cloud-agnostic - it can run on AWS EKS, Azure AKS, or Google GKE."
+
+---
+
+### Q20: What is Helm and why do companies use it?
+
+**Short Answer:**
+
+**Helm** = Kubernetes Package Manager (like npm for Node.js, Maven for Java)
+
+**What Helm Solves:**
+
+**Without Helm (Manual K8s):**
+```
+❌ Manage 20+ YAML files per service
+❌ Copy-paste configs for each environment
+❌ Manual version tracking
+❌ Complex rollbacks (reapply old YAMLs)
+❌ No templating - hardcoded values
+```
+
+**With Helm:**
+```
+✅ One Chart = Complete application package
+✅ Templates with variables
+✅ Easy multi-environment deployment
+✅ One-command install/upgrade/rollback
+✅ Version history and rollbacks
+```
+
+**Helm Chart Structure:**
+
+```
+auth-service-helm/
+├── Chart.yaml              # Chart metadata (name, version)
+├── values.yaml            # Default configuration values
+├── values-dev.yaml        # Dev environment overrides
+├── values-prod.yaml       # Prod environment overrides
+└── templates/
+    ├── deployment.yaml    # Pod deployment template
+    ├── service.yaml       # Service template
+    ├── ingress.yaml       # Ingress template
+    └── configmap.yaml     # Config template
+```
+
+**Deployment Commands:**
+
+```bash
+# Install to dev
+helm install auth-service ./auth-service-helm -f values-dev.yaml
+
+# Upgrade to new version
+helm upgrade auth-service ./auth-service-helm
+
+# Rollback to previous version
+helm rollback auth-service 1
+
+# List all releases
+helm list
+```
+
+**Key Benefits:**
+
+| Problem | Helm Solution |
+|---------|--------------|
+| **Hard to manage multiple environments** | Use values-{env}.yaml files |
+| **Difficult rollbacks** | `helm rollback` to any previous version |
+| **Version tracking** | Helm automatically versions releases |
+| **Config duplication** | Templates with variables {{ .Values.image }} |
+| **Complex dependencies** | Chart dependencies in Chart.yaml |
+
+**Real Example - Multi-Environment:**
+
+```yaml
+# values-dev.yaml
+replicaCount: 1
+image:
+  tag: latest
+resources:
+  limits:
+    memory: "512Mi"
+
+# values-prod.yaml
+replicaCount: 3
+image:
+  tag: v1.2.3
+resources:
+  limits:
+    memory: "2Gi"
+```
+
+**Strong Interview Answer:**
+> "Helm is the package manager for Kubernetes, similar to npm for Node.js. It solves the problem of managing complex Kubernetes deployments across multiple environments. Instead of maintaining dozens of YAML files with hardcoded values, you create one Helm chart with templates and variable substitution. For example, at companies like Deutsche Bank, they have separate values files for dev, staging, and prod - same chart, different configurations. Helm also provides built-in version control and rollback capabilities. If a deployment fails, you can rollback to the previous working version with one command. Additionally, Helm charts can be stored in repositories and shared across teams, promoting standardization. The combination of templating, versioning, and easy rollbacks makes Helm essential for production Kubernetes deployments."
+
+---
+
+### Q21: How does containerization help microservices?
+
+**Short Answer:**
+
+Containers package applications with all dependencies, ensuring consistency across environments.
+
+**Docker in Microservices Architecture:**
+
+```
+Build Once, Run Anywhere:
+Developer Laptop → CI/CD → Staging → Production
+  (same container image across all environments)
+```
+
+**Key Benefits:**
+
+| Problem Without Containers | Solution With Containers |
+|---------------------------|-------------------------|
+| "Works on my machine" syndrome | Same environment everywhere |
+| Dependency conflicts | Each container isolated |
+| Slow environment setup | Pull image, run instantly |
+| Resource waste | Lightweight, share OS kernel |
+| Deployment complexity | Deploy = run container |
+
+**Microservice Container Example:**
+
+```
+auth-service container:
+├── Java 17 runtime
+├── auth-service.jar
+├── Dependencies (libraries)
+└── Configuration (minimal)
+
+Runs identically on:
+- Mac (dev)
+- Linux (prod)
+- Windows (CI/CD)
+```
+
+**Kubernetes + Docker Integration:**
+
+```
+Kubernetes manages:
+├── When to start containers (Deployments)
+├── How many replicas (Auto-scaling)
+├── Health checks (Liveness/Readiness)
+└── Networking (Services, Ingress)
+
+Docker provides:
+└── The container image to run
+```
+
+**Strong Interview Answer:**
+> "Containerization with Docker ensures that microservices run consistently across all environments. Each microservice is packaged as a Docker image with its runtime, dependencies, and application code. This eliminates 'works on my machine' problems because the same container image is used in development, staging, and production. Containers are lightweight compared to VMs - they share the host OS kernel while providing isolation. When deployed to Kubernetes, containers enable auto-scaling, rolling updates, and self-healing. For example, if a container crashes, Kubernetes automatically restarts it. This combination of portability, consistency, and operational benefits makes containers essential for microservices in production environments."
+
+---
+
 ## Real Interview Scenarios
 
 ### Scenario 1: "Tell me about a microservices migration you've worked on"
@@ -452,6 +1301,379 @@ When you forget `<skip>true</skip>` on a library:
 > 5. **Strong consistency needs** - distributed transactions are complex
 >
 > Martin Fowler's advice: 'Start with a monolith, extract microservices when you feel pain.' The pain signals are: deployments block each other, teams stepping on each other's code, different scaling needs per module. Microservices are a tool for organizational scaling, not a goal in themselves."
+
+---
+
+## Reactive Programming
+
+### Q22: What is Reactive Programming and when should you use it?
+
+**Short Answer:**
+
+**Reactive Programming** = Non-blocking, event-driven programming model that uses callbacks and event loops to handle I/O operations without blocking threads.
+
+**Key Concept:**
+
+Traditional (Blocking):
+- Thread waits while database/API call completes
+- 1000 requests = 1000+ threads needed
+- High memory usage, thread context-switching overhead
+
+Reactive (Non-blocking):
+- Thread registers callback and moves on
+- Event loop notifies when operation completes
+- 1000 requests = 10-50 threads (event loops)
+- Low memory, high throughput
+
+**Reactive Types in Spring:**
+
+| Type | Represents | Example |
+|------|-----------|---------|
+| **Mono<T>** | 0 or 1 item | `Mono<User>` - single user or empty |
+| **Flux<T>** | 0 to N items | `Flux<Order>` - stream of orders |
+
+**When to Use Reactive:**
+
+| Scenario | Blocking | Reactive |
+|----------|---------|----------|
+| **High concurrency** | 10K users = 10K threads | 10K users = 50 threads ✅ |
+| **I/O heavy** | Threads wait on DB/API | Threads never block ✅ |
+| **Low latency** | Thread blocking adds delay | Async operations ✅ |
+| **Simple CRUD** | Spring MVC is simpler ✅ | Unnecessary complexity |
+| **CPU-intensive** | Better with blocking ✅ | No benefit |
+
+**Example: Blocking vs Reactive**
+
+**Blocking (Spring MVC):**
+```java
+@GetMapping("/user/{id}")
+public User getUser(@PathVariable Long id) {
+    // Thread BLOCKS here for 100ms
+    User user = userRepository.findById(id);
+
+    // Thread BLOCKS here for 200ms
+    List<Order> orders = orderService.getOrders(user);
+
+    // Total: 300ms with thread blocked entire time
+    return user;
+}
+```
+
+**Reactive (Spring WebFlux):**
+```java
+@GetMapping("/user/{id}")
+public Mono<User> getUser(@PathVariable Long id) {
+    return userRepository.findById(id)  // Returns immediately
+        .flatMap(user ->                // Callback when user arrives
+            orderService.getOrders(user) // Returns immediately
+                .map(orders -> {         // Callback when orders arrive
+                    user.setOrders(orders);
+                    return user;
+                })
+        );
+    // Thread is FREE entire 300ms to handle other requests
+}
+```
+
+**Strong Interview Answer:**
+> "Reactive programming is a non-blocking, event-driven model that uses callbacks and event loops instead of blocking threads for I/O operations. In Spring, we use Mono for single results and Flux for streams. The key benefit is efficiency - a blocking system needs thousands of threads for thousands of concurrent requests because each thread waits for I/O. Reactive systems use 10-50 event loop threads that never block - they register callbacks and move on to handle other requests. When I/O completes, the event loop triggers the callback. This is why Spring Cloud Gateway uses reactive - it needs to handle high concurrency without thread overhead. However, I wouldn't use reactive for simple CRUD apps where Spring MVC is simpler and adequate. Companies like Netflix, LinkedIn, and PayPal use reactive for high-traffic APIs where thread efficiency is critical."
+
+---
+
+### Q23: What is the difference between Reactive Programming and CompletableFuture?
+
+**Short Answer:**
+
+Both handle async operations, but **reactive uses event loops** while **CompletableFuture uses thread pools**.
+
+**Key Difference:**
+
+| Aspect | CompletableFuture | Reactive (Mono/Flux) |
+|--------|------------------|---------------------|
+| **Thread model** | Thread pool (blocking underneath) | Event loop (non-blocking) |
+| **Threads needed** | 1 thread per async operation | Few event loop threads |
+| **1000 parallel calls** | 1000+ threads | 10-50 threads |
+| **Blocking** | Threads block on `.get()` | Never blocks |
+| **Backpressure** | ❌ No built-in support | ✅ Yes (Flow control) |
+| **Memory** | High (many threads) | Low (few threads) |
+| **Use case** | Parallel independent tasks | High-concurrency I/O |
+
+**Example Comparison:**
+
+**CompletableFuture:**
+```java
+CompletableFuture<User> userFuture =
+    CompletableFuture.supplyAsync(() -> userService.getUser(id));
+
+CompletableFuture<Orders> ordersFuture =
+    CompletableFuture.supplyAsync(() -> orderService.getOrders(id));
+
+// Still uses worker threads that block on I/O
+// 1000 requests = ~3000 threads (user + orders + analytics per request)
+```
+
+**Reactive:**
+```java
+Mono<User> userMono = userService.getUser(id);  // Returns immediately
+Mono<Orders> ordersMono = orderService.getOrders(id);  // Returns immediately
+
+Mono.zip(userMono, ordersMono)
+    .map(tuple -> combine(tuple.T1, tuple.T2));
+
+// Event loop threads never block
+// 1000 requests = 10 event loop threads
+```
+
+**Timeline Comparison:**
+
+**CompletableFuture (3 parallel API calls):**
+```
+Main thread: Submit 3 tasks to thread pool
+├─ Worker Thread 1: [BLOCKS 200ms on API A]
+├─ Worker Thread 2: [BLOCKS 300ms on API B]
+└─ Worker Thread 3: [BLOCKS 150ms on API C]
+Main thread: Wait and collect results
+Total: 300ms, 3 threads BLOCKED entire time
+```
+
+**Reactive (3 parallel API calls):**
+```
+Event Loop Thread: Register callback for API A → FREE immediately
+Event Loop Thread: Register callback for API B → FREE immediately
+Event Loop Thread: Register callback for API C → FREE immediately
+[All 3 operations running in parallel, thread handling OTHER requests]
+Event Loop: API C done (150ms) → trigger callback
+Event Loop: API A done (200ms) → trigger callback
+Event Loop: API B done (300ms) → trigger callback → combine results
+Total: 300ms, thread was FREE entire time
+```
+
+**Strong Interview Answer:**
+> "CompletableFuture provides async execution but still uses thread pools underneath - each async operation consumes a thread that blocks on I/O. For 1000 parallel requests, you might need 3000 threads. Reactive programming with Mono/Flux uses event loops instead - threads register callbacks and immediately move on without blocking. The event loop notifies when operations complete. This means 1000 requests might only need 10-50 event loop threads. CompletableFuture is fine for parallelizing a few independent tasks, but reactive is essential for high-concurrency systems like API gateways where thread efficiency is critical. Reactive also provides backpressure for flow control, which CompletableFuture doesn't have. This is why Spring Cloud Gateway uses reactive - it can handle millions of requests without creating millions of threads."
+
+---
+
+### Q24: How does reactive programming handle dependent API calls?
+
+**Short Answer:**
+
+Reactive handles **both independent and dependent** calls efficiently using `.flatMap()` for chaining.
+
+**Common Misconception:**
+❌ "Reactive only works when API calls are independent (parallel)"
+
+**Reality:**
+✅ Reactive works for BOTH independent (parallel) and dependent (sequential) calls
+✅ The key benefit is thread never blocks, even for sequential operations
+
+**Independent Calls (Parallel):**
+```java
+Mono<User> userMono = userService.getUser(id);
+Mono<Profile> profileMono = profileService.getProfile(id);
+Mono<Orders> ordersMono = orderService.getOrders(id);
+
+// Execute all 3 in parallel
+Mono.zip(userMono, profileMono, ordersMono)
+    .map(tuple -> combine(tuple));
+
+// Timeline: All 3 start immediately, complete in parallel
+// Thread: FREE entire time
+```
+
+**Dependent Calls (Sequential):**
+```java
+userService.getUser(id)          // Step 1: Get user
+    .flatMap(user ->              // Step 2: Use user to get orders
+        orderService.getOrders(user.getId())
+            .flatMap(orders ->    // Step 3: Use orders to calculate total
+                paymentService.calculateTotal(orders)
+                    .map(total -> {
+                        user.setTotal(total);
+                        return user;
+                    })
+            )
+    );
+
+// Timeline: Sequential execution (200ms + 300ms + 100ms = 600ms)
+// Thread: Still FREE - just registers callbacks at each step
+```
+
+**Why Thread is Free (Event Loop + Callbacks):**
+
+**Step-by-step timeline:**
+```
+T=0ms:   Thread calls getUser() → registers callback → moves on to handle Request #2
+T=200ms: Event loop detects getUser() done → triggers callback
+         Thread executes callback: calls getOrders() → registers callback → moves on
+T=500ms: Event loop detects getOrders() done → triggers callback
+         Thread executes callback: calls calculateTotal() → registers callback → moves on
+T=600ms: Event loop detects calculateTotal() done → triggers final callback
+         Thread executes callback: combines results → sends response
+```
+
+**Key Insight:**
+- Sequential execution time is SAME (600ms blocking vs 600ms reactive)
+- BUT in reactive, thread handles hundreds of other requests during those 600ms
+- In blocking, thread sits idle waiting for I/O
+
+**Blocking vs Reactive Comparison:**
+
+**Blocking (Spring MVC):**
+```java
+User user = userService.getUser(id);           // Thread BLOCKS 200ms
+Orders orders = orderService.getOrders(user);   // Thread BLOCKS 300ms
+Total total = paymentService.calculateTotal(orders); // Thread BLOCKS 100ms
+
+// Timeline: 600ms with thread BLOCKED entire time
+// 10 concurrent requests = 10 threads needed
+```
+
+**Reactive (Spring WebFlux):**
+```java
+return userService.getUser(id)
+    .flatMap(user -> orderService.getOrders(user))
+    .flatMap(orders -> paymentService.calculateTotal(orders));
+
+// Timeline: 600ms with thread FREE entire time (handling other requests)
+// 10 concurrent requests = 1-2 threads needed
+```
+
+**Restaurant Analogy:**
+
+**Blocking Waiter:**
+- Take order from Table 1
+- Walk to kitchen and WAIT until food ready (5 minutes of standing)
+- Deliver food to Table 1
+- Now take order from Table 2
+Result: 1 waiter = 12 tables per hour
+
+**Reactive Waiter:**
+- Take order from Table 1 → give to kitchen → immediately take order from Table 2
+- Kitchen rings bell → deliver to Table 1 → take order from Table 3
+- Kitchen rings bell → deliver to Table 2 → take order from Table 4
+Result: 1 waiter = 50 tables per hour (same quality, more efficient)
+
+**Strong Interview Answer:**
+> "Reactive programming works efficiently for both independent and dependent API calls. For independent calls, I use Mono.zip() to execute them in parallel. For dependent calls where output of one is input to another, I use .flatMap() to chain them sequentially. The critical difference from blocking code is that in reactive, the thread never blocks even during sequential operations - it registers a callback and immediately moves on to handle other requests. When each operation completes, the event loop triggers the next callback. For example, in a KYC verification flow with 3 dependent checks taking 600ms total, the thread is free to handle hundreds of other requests during that time, whereas in blocking code the thread sits idle waiting. This is the power of reactive - not faster execution time, but massively better thread utilization and throughput."
+
+---
+
+### Q25: What companies use reactive programming?
+
+**Short Answer:**
+
+**Major Tech Companies:**
+- **Netflix**: Spring WebFlux for API Gateway (Zuul)
+- **LinkedIn**: Play Framework (reactive)
+- **PayPal**: Akka for payment processing
+- **Twitter**: Finagle (reactive RPC framework)
+- **Walmart**: Reactive microservices for e-commerce
+- **Alibaba**: RxJava for high-traffic systems
+- **Microsoft**: Reactive Extensions (Rx)
+
+**Industries Using Reactive:**
+- **Fintech**: High-frequency trading, payment gateways
+- **E-commerce**: Black Friday traffic spikes
+- **Streaming**: Real-time video/audio streaming
+- **Gaming**: Multiplayer game servers
+- **IoT**: Sensor data processing
+
+**Framework Adoption:**
+
+| Framework | Used By |
+|-----------|---------|
+| **Spring WebFlux** | Netflix, Alibaba, Walmart |
+| **Akka** | PayPal, Lightbend customers |
+| **Play Framework** | LinkedIn, Coursera |
+| **Vert.x** | Red Hat, Eclipse Foundation |
+| **RxJava** | Netflix, Alibaba, Uber |
+
+**Strong Interview Answer:**
+> "Reactive programming is widely used in companies with high-concurrency requirements. Netflix uses Spring WebFlux for their API Gateway to handle millions of requests with minimal threads. LinkedIn built their platform on Play Framework which is reactive. PayPal uses Akka for payment processing where thread efficiency and fault tolerance are critical. Twitter created Finagle, their own reactive RPC framework. It's particularly common in fintech for payment gateways, e-commerce for handling traffic spikes, and streaming platforms where real-time data processing is essential. Spring WebFlux has become the industry standard for reactive in the Java ecosystem."
+
+---
+
+### Q26: What is Spring WebFlux and how is it different from Spring MVC?
+
+**Short Answer:**
+
+**Spring WebFlux** = Spring's reactive web framework (non-blocking)
+**Spring MVC** = Spring's traditional web framework (blocking)
+
+**Key Differences:**
+
+| Aspect | Spring MVC | Spring WebFlux |
+|--------|-----------|---------------|
+| **Threading Model** | One thread per request | Event loop threads |
+| **I/O** | Blocking | Non-blocking |
+| **Return Types** | `User`, `List<User>` | `Mono<User>`, `Flux<User>` |
+| **Server** | Tomcat (servlet container) | Netty (event-driven) |
+| **Annotations** | `@RestController`, `@GetMapping` | Same! |
+| **Best For** | Standard CRUD apps | High-concurrency systems |
+| **Database** | JDBC (blocking) | R2DBC (reactive) |
+| **Thread Pool** | 200 threads (default) | 10-50 event loop threads |
+| **10K concurrent** | 10K threads needed | 50 threads enough |
+
+**Code Comparison:**
+
+**Spring MVC:**
+```java
+@RestController
+public class UserController {
+
+    @GetMapping("/users/{id}")
+    public User getUser(@PathVariable Long id) {
+        return userRepository.findById(id);  // Blocks thread
+    }
+}
+
+// Uses: Tomcat with blocking I/O
+// Database: Spring Data JPA (JDBC - blocking)
+```
+
+**Spring WebFlux:**
+```java
+@RestController
+public class UserController {
+
+    @GetMapping("/users/{id}")
+    public Mono<User> getUser(@PathVariable Long id) {
+        return userRepository.findById(id);  // Non-blocking
+    }
+}
+
+// Uses: Netty with event loop
+// Database: Spring Data R2DBC (reactive)
+```
+
+**When to Use Spring WebFlux:**
+
+| Use Case | Why WebFlux |
+|----------|------------|
+| **API Gateway** | Handle thousands of concurrent requests ✅ |
+| **Real-time streaming** | Push updates to clients (SSE, WebSocket) ✅ |
+| **High-traffic APIs** | Thread efficiency critical ✅ |
+| **Microservices mesh** | Service-to-service calls non-blocking ✅ |
+
+**When to Use Spring MVC:**
+
+| Use Case | Why MVC |
+|----------|---------|
+| **Simple CRUD** | Easier to understand, less complexity ✅ |
+| **Blocking dependencies** | JDBC, legacy libraries ✅ |
+| **Team familiarity** | Most developers know MVC ✅ |
+| **Low traffic** | Thread overhead not a problem ✅ |
+
+**Can Services Mix?**
+
+✅ **YES!** Not all services need to be reactive:
+- API Gateway: Spring WebFlux (high concurrency)
+- Auth Service: Spring MVC (simple CRUD)
+- URL Service: Spring MVC (database-heavy)
+- Analytics Service: Spring MVC (batch processing)
+
+**Strong Interview Answer:**
+> "Spring WebFlux is Spring's reactive web framework built on Project Reactor and Netty, while Spring MVC is the traditional blocking framework on Tomcat. The key difference is threading: MVC uses one thread per request that blocks on I/O, while WebFlux uses a small number of event loop threads that never block. WebFlux returns Mono and Flux instead of direct objects, and requires reactive databases like R2DBC instead of JDBC. However, the annotations like @RestController and @GetMapping are the same, making it familiar. I'd use WebFlux for API Gateways and high-concurrency systems where thread efficiency is critical, but stick with Spring MVC for standard CRUD applications where simplicity matters more than throughput. Companies like Netflix use WebFlux for their gateway to handle millions of requests, but many of their backend services still use Spring MVC."
 
 ---
 
@@ -505,35 +1727,57 @@ When you forget `<skip>true</skip>` on a library:
 
 ## Interview Question Categories
 
-### Architecture & Design (35%)
+### Architecture & Design (25%)
 - Monolith to microservices migration
 - Service boundaries
 - Database strategies
 - Communication patterns (sync vs async)
 
-### Resilience & Reliability (25%)
+### Reactive Programming (15%)
+- What is reactive programming and when to use it
+- Spring WebFlux vs Spring MVC
+- Reactive vs CompletableFuture
+- Handling dependent API calls with flatMap
+- Mono, Flux, and event loops
+- Companies using reactive (Netflix, LinkedIn, PayPal)
+
+### API Gateway & Service Mesh (15%)
+- API Gateway vs Service Mesh
+- Service mesh benefits and use cases
+- Integration with REST/Kafka
+- Developer responsibilities with service mesh
+
+### Resilience & Reliability (20%)
 - Circuit breakers (Resilience4j)
 - Retry strategies
 - Timeout handling
 - Graceful degradation
 
-### Deployment & Operations (20%)
+### Deployment & Operations (15%)
 - Feature flags
 - Canary deployments
 - Blue-green deployments
 - Rollback strategies
+- Kubernetes and Helm deployment
+- Container orchestration
 
-### Build & Deployment (10%)
+### Build & Deployment (5%)
 - Executable vs library JARs
 - Maven multi-module projects
 - Spring Boot plugin configuration
 - Artifact packaging
 
-### Observability & Monitoring (10%)
-- Metrics (Prometheus)
+### Kubernetes & Helm (5%)
+- Container orchestration with Kubernetes
+- Helm charts for deployment
+- Docker containerization benefits
+- Enterprise deployment strategies
+
+### Observability & Monitoring (5%)
+- Metrics (Prometheus, Grafana)
 - Logging (ELK)
 - Distributed tracing (Zipkin)
-- Alerting (PagerDuty)
+- APM (New Relic, Datadog)
 
 ---
 
@@ -556,9 +1800,10 @@ When you forget `<skip>true</skip>` on a library:
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** November 11, 2025
+**Document Version:** 1.3
+**Last Updated:** November 18, 2025
 **Next Review:** Before each interview
+**New in v1.3:** Added comprehensive Reactive Programming section with 5 questions (Q22-Q26) covering reactive fundamentals, Spring WebFlux vs MVC, Reactive vs CompletableFuture, handling dependent calls with flatMap, event loops and callbacks, and companies using reactive programming
 
 ---
 
