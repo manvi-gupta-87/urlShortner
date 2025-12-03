@@ -1,0 +1,59 @@
+# Docker ignore file - excludes files from Docker build context
+# Reduces build context size and speeds up Docker builds
+# Prevents unnecessary files from being sent to Docker daemon
+
+# Maven build artifacts
+# These are generated during Docker build, no need to copy from host
+**/target/
+**/bin/
+
+# IDE files - not needed in containers
+**/.idea/
+**/.vscode/
+**/.settings/
+**/.project
+**/.classpath
+**/.factorypath
+**/*.iml
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Git files - not needed in production images
+**/.git/
+**/.gitignore
+**/.gitattributes
+
+# Documentation - not needed in runtime images
+**/README.md
+**/docs/
+**/*.md
+
+# Test files - tests run in CI/CD, not during Docker build
+**/src/test/
+
+# Node modules - if any frontend tooling exists
+**/node_modules/
+**/npm-debug.log
+
+# Environment files - credentials should never be in images
+**/.env
+**/.env.*
+
+# Docker files themselves
+**/Dockerfile
+**/docker-compose.yml
+**/.dockerignore
+
+# Logs - generated at runtime
+**/*.log
+
+# Frontend build artifacts (if applicable)
+**/dist/
+**/build/
+
+# Temporary files
+**/*.tmp
+**/*.swp
+**/*.bak

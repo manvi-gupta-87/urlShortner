@@ -1,0 +1,192 @@
+# Docker Compose file for URL Shortener Microservices
+# This file orchestrates all microservices for local development and testing
+# Production deployments should use Kubernetes/OpenShift
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  # Shared database with service-owned tables (pragmatic approach)
+  postgres:
+    image: postgres:15-alpine
+    container_name: urlshortener-postgres
+    environment:
+      # Database credentials - should be externalized in production
+      POSTGRES_DB: urlshortener
+      POSTGRES_USER: urlshortener_user
+      POSTGRES_PASSWORD: urlshortener_pass
+    ports:
+      # Expose for local development/debugging
+      # Remove in production - only services should access
+      - "5432:5432"
+    volumes:
+      # Persist database data across container restarts
+      # Named volume - managed by Docker
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - urlshortener-network
+    healthcheck:
+      # Ensure database is ready before dependent services start
+      test: ["CMD-SHELL", "pg_isready -U urlshortener_user -d urlshortener"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Eureka Server - Service Discovery
+  # All microservices register here and discover each other
+  eureka-server:
+    build:
+      # Build from local Dockerfile
+      context: .
+      dockerfile: microservices/eureka-server/Dockerfile
+    container_name: eureka-server
+    ports:
+      # Eureka dashboard and registration endpoint
+      - "8761:8761"
+    networks:
+      - urlshortener-network
+    healthcheck:
+      # Wait for Eureka to be fully ready
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 40s
+      retries: 3
+
+  # Auth Service - User authentication and JWT generation
+  # Depends on: Database, Eureka
+  auth-service:
+    build:
+      context: .
+      dockerfile: microservices/auth-service/Dockerfile
+    container_name: auth-service
+    environment:
+      # Eureka server URL - using service name (Docker DNS)
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      # Database connection - using service name
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
+      SPRING_DATASOURCE_USERNAME: urlshortener_user
+      SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+      # JWT secret - should be externalized in production
+      JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    ports:
+      # Expose for direct access (optional - usually through gateway)
+      - "8081:8081"
+    depends_on:
+      # Wait for dependencies to be healthy before starting
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
+
+  # URL Service - URL shortening and redirect logic
+  # Depends on: Database, Eureka
+  url-service:
+    build:
+      context: .
+      dockerfile: microservices/url-service/Dockerfile
+    container_name: url-service
+    environment:
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
+      SPRING_DATASOURCE_USERNAME: urlshortener_user
+      SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
+
+  # Analytics Service - Click tracking and statistics
+  # Depends on: Database, Eureka
+  analytics-service:
+    build:
+      context: .
+      dockerfile: microservices/analytics-service/Dockerfile
+    container_name: analytics-service
+    environment:
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
+      SPRING_DATASOURCE_USERNAME: urlshortener_user
+      SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
+
+  # API Gateway - Entry point for all client requests
+  # Handles routing, authentication, and CORS
+  # Uses reactive programming (Spring Cloud Gateway)
+  # Depends on: Eureka (to discover all services)
+  api-gateway:
+    build:
+      context: .
+      dockerfile: microservices/api-gateway/Dockerfile
+    container_name: api-gateway
+    environment:
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      # JWT secret - must match auth-service for token validation
+      JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    ports:
+      # Main entry point - all clients connect here
+      - "8080:8080"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      # Gateway should start after services are registered
+      auth-service:
+        condition: service_healthy
+      url-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 45s
+      retries: 3
+
+# Named volumes for data persistence
+# Managed by Docker - survives container deletion
+volumes:
+  postgres-data:
+    driver: local
+
+# Custom network for service communication
+# Services can communicate using service names as hostnames
+# Provides isolation from other Docker containers
+networks:
+  urlshortener-network:
+    driver: bridge

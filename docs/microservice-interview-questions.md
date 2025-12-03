@@ -16,7 +16,7 @@
 6. [API Gateway & Service Mesh](#api-gateway--service-mesh)
 7. [Reactive Programming](#reactive-programming)
 8. [Monitoring & Observability](#monitoring--observability)
-9. [Build & Deployment](#build--deployment)
+9. [Build & Deployment](#build--deployment) - Docker JVM Optimizations
 10. [Kubernetes & Helm Deployment](#kubernetes--helm-deployment)
 11. [Real Interview Scenarios](#real-interview-scenarios)
 12. [Quick Interview Tips](#quick-interview-tips)
@@ -1677,6 +1677,615 @@ public class UserController {
 
 ---
 
+### Q27: Why use reactive programming specifically in API Gateway?
+
+**Short Answer:**
+
+API Gateway is the **perfect use case** for reactive programming because it handles **high concurrency** with **I/O-heavy operations**.
+
+**Why API Gateway Needs Reactive:**
+
+| Characteristic | Why Reactive Fits |
+|----------------|------------------|
+| **High concurrent requests** | 10,000 simultaneous users → 50 reactive threads vs 10,000 blocking threads |
+| **I/O heavy workload** | Gateway mostly waits for backend responses, doesn't do heavy processing |
+| **Routing & forwarding** | Just validates JWT and forwards → perfect for non-blocking |
+| **Entry point bottleneck** | ALL external traffic flows through gateway → must be extremely efficient |
+
+**What API Gateway Does:**
+
+```
+1. Receive request from client
+2. Validate JWT token (fast, in-memory operation)
+3. Forward request to backend service (I/O - WAIT for response)
+4. Return response to client
+
+Step 3 is 90% of the time spent - WAITING for backend
+```
+
+**Reactive Advantage:**
+
+**Blocking Gateway (Spring MVC):**
+```
+Request 1 → Thread 1 [validates JWT → BLOCKS waiting for backend]
+Request 2 → Thread 2 [validates JWT → BLOCKS waiting for backend]
+Request 3 → Thread 3 [validates JWT → BLOCKS waiting for backend]
+...
+Request 10,000 → Thread 10,000 [validates JWT → BLOCKS]
+
+Result: 10,000 threads, high memory usage, context-switching overhead
+```
+
+**Reactive Gateway (Spring Cloud Gateway):**
+```
+Request 1 → Event Loop Thread [validates JWT → registers callback → FREE]
+Request 2 → Same Thread [validates JWT → registers callback → FREE]
+Request 3 → Same Thread [validates JWT → registers callback → FREE]
+...
+Request 10,000 → Still ~50 threads total
+
+Result: 50 threads handle 10,000 requests, low memory, no context-switching
+```
+
+**Spring Cloud Gateway Requirement:**
+
+Spring Cloud Gateway is **built on Spring WebFlux** by design. You must use reactive patterns - it's not optional.
+
+**Backend Services Can Stay Blocking:**
+
+```
+✅ API Gateway: Spring Cloud Gateway (reactive) - high concurrency entry point
+✅ Auth Service: Spring MVC (blocking) - simple CRUD, database operations
+✅ URL Service: Spring MVC (blocking) - business logic, database-heavy
+✅ Analytics Service: Spring MVC (blocking) - batch processing, reporting
+```
+
+**Key Insight:**
+
+Gateway doesn't do **heavy processing** - it just:
+- Routes requests
+- Validates JWT
+- Forwards to backend services
+
+This is **all I/O operations** with minimal CPU work - exactly where reactive shines.
+
+**Real-World Example:**
+
+Netflix API Gateway (Zuul):
+- Handles millions of requests per second
+- Uses reactive programming (WebFlux)
+- Backend services: Mix of reactive and blocking
+- Result: Can handle massive traffic spikes with minimal infrastructure
+
+**Strong Interview Answer:**
+> "I used reactive programming in the API Gateway because it's the entry point for all external traffic and needs to handle thousands of concurrent requests efficiently. The gateway's workload is I/O-heavy - it validates JWT tokens and forwards requests to backend services, spending most time waiting for responses. With reactive programming, 10,000 concurrent requests need only 50 event loop threads instead of 10,000 blocking threads. Additionally, Spring Cloud Gateway is built on Spring WebFlux, so reactive is required. However, I kept the backend services like Auth-Service and URL-Service as blocking Spring MVC because they do actual business logic and database operations where simplicity matters more than thread efficiency. This hybrid approach is the industry standard - reactive at the gateway for high concurrency, blocking in backend services for developer productivity."
+
+---
+
+### Q28: What's the difference between CORS in Spring MVC vs Spring WebFlux?
+
+**Short Answer:**
+
+CORS configuration is **conceptually the same**, but uses **different implementation classes** for servlet vs reactive servers.
+
+**Key Differences:**
+
+| Aspect | Spring MVC | Spring WebFlux |
+|--------|-----------|---------------|
+| **Server** | Tomcat (servlet-based) | Netty (reactive) |
+| **Filter Class** | `CorsFilter` | `CorsWebFilter` |
+| **Package** | `org.springframework.web.cors` | `org.springframework.web.cors.reactive` |
+| **Filter Type** | Servlet filter (blocking) | WebFilter (non-blocking) |
+| **Config Source** | `UrlBasedCorsConfigurationSource` | `UrlBasedCorsConfigurationSource` (reactive version) |
+
+**Code Comparison:**
+
+**Spring MVC (Blocking):**
+```java
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    public CorsFilter corsFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE"));
+        config.setAllowedHeaders(Arrays.asList("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source =
+            new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return new CorsFilter(source);  // Servlet-based filter
+    }
+}
+```
+
+**Spring WebFlux (Reactive):**
+```java
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    public CorsWebFilter corsWebFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE"));
+        config.setAllowedHeaders(Arrays.asList("*"));
+        config.setAllowCredentials(true);
+
+        org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource source =
+            new org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return new CorsWebFilter(source);  // Reactive web filter
+    }
+}
+```
+
+**What's the Same:**
+
+Both use identical `CorsConfiguration` with same methods:
+- `setAllowedOrigins()` - Which domains can access
+- `setAllowedMethods()` - Which HTTP methods allowed
+- `setAllowedHeaders()` - Which headers allowed
+- `setAllowCredentials()` - Allow cookies/auth headers
+- `setMaxAge()` - Preflight cache duration
+
+**What's Different:**
+
+**Spring MVC:**
+```
+Request → Servlet Filter Chain → CorsFilter (blocks thread) → Controller
+```
+
+**Spring WebFlux:**
+```
+Request → Reactive Filter Chain → CorsWebFilter (non-blocking) → Controller
+```
+
+**Alternative: Annotation-Based (Works for Both):**
+
+```java
+@RestController
+@CrossOrigin(origins = "http://localhost:4200")
+public class UserController {
+
+    // Spring MVC version
+    @GetMapping("/users")
+    public List<User> getUsers() {
+        return userService.getAllUsers();
+    }
+
+    // Spring WebFlux version
+    @GetMapping("/users")
+    public Mono<List<User>> getUsers() {
+        return userService.getAllUsers();
+    }
+}
+```
+
+**Why Two Different Classes?**
+
+- **MVC**: Uses servlet filter chain that operates on blocking threads
+- **WebFlux**: Uses reactive filter chain that operates on event loop threads
+- Cannot mix servlet filters with reactive web filters - different execution models
+
+**Common Interview Question:**
+
+"Can I use `CorsFilter` in Spring Cloud Gateway?"
+
+**Answer:** No, you must use `CorsWebFilter` because Spring Cloud Gateway is built on WebFlux/Netty, not servlet containers.
+
+**Strong Interview Answer:**
+> "CORS configuration is conceptually identical between Spring MVC and WebFlux - same allowed origins, methods, and headers using CorsConfiguration. The difference is the implementation class: MVC uses CorsFilter which is a servlet filter that blocks threads, while WebFlux uses CorsWebFilter from the reactive package which is non-blocking. In my API Gateway using Spring Cloud Gateway, I use CorsWebFilter because it's built on WebFlux and Netty. The actual CORS logic - validating origins, adding headers - is the same, but the filter execution model differs to match the blocking vs reactive threading model."
+
+---
+
+### Q29: How do you ensure correct filter execution order in Spring Cloud Gateway?
+
+**Short Answer:**
+
+Use `@Order` annotation with **lower numbers executing first**. CORS must run before authentication to allow preflight requests.
+
+**Why Filter Order Matters:**
+
+```
+❌ Wrong Order:
+Request → Authentication Filter → CORS Filter → Backend
+Problem: OPTIONS preflight has no JWT token → Auth fails → CORS never runs
+
+✅ Correct Order:
+Request → CORS Filter → Authentication Filter → Backend
+Result: OPTIONS preflight gets CORS headers → Auth skipped for OPTIONS → Success
+```
+
+**How to Control Order:**
+
+**Method 1: Using `@Order` Annotation**
+```java
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    @Order(-100)  // High priority - executes first
+    public CorsWebFilter corsWebFilter() {
+        // CORS configuration
+    }
+}
+```
+
+**Method 2: Implementing `Ordered` Interface**
+```java
+@Component
+public class CorsFilter implements GlobalFilter, Ordered {
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        // Filter logic
+    }
+
+    @Override
+    public int getOrder() {
+        return -100;  // High priority
+    }
+}
+```
+
+**Method 3: Order in Route Configuration**
+```java
+@Bean
+public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
+    return builder.routes()
+        .route("url-service", r -> r
+            .path("/api/urls/**")
+            .filters(f -> f
+                .filter(loggingFilter)      // Executes first
+                .filter(authFilter)         // Then this
+                .filter(rateLimitFilter)    // Finally this
+            )
+            .uri("lb://URL-SERVICE"))
+        .build();
+}
+```
+
+**Recommended Filter Order:**
+
+| Order Value | Filter | Purpose |
+|-------------|--------|---------|
+| **-100** | CORS Filter | Handle preflight, add CORS headers |
+| **0** | Logging Filter | Log incoming requests |
+| **1** | Authentication Filter | Validate JWT tokens |
+| **2** | Rate Limiting Filter | Check request rate limits |
+| **3** | Authorization Filter | Verify permissions |
+
+**Complete Request Flow:**
+
+```
+1. Request arrives
+   ↓
+2. CORS Filter (Order = -100)
+   - Add Access-Control-* headers
+   - For OPTIONS: return 200 immediately
+   ↓
+3. Logging Filter (Order = 0)
+   - Log request details
+   ↓
+4. Authentication Filter (Order = 1)
+   - Validate JWT token (skipped for OPTIONS)
+   ↓
+5. Rate Limiting Filter (Order = 2)
+   - Check if user exceeded rate limit
+   ↓
+6. Authorization Filter (Order = 3)
+   - Check if user has permission for resource
+   ↓
+7. Route to backend service
+   ↓
+8. Response flows back through filters in reverse
+```
+
+**Common Mistake:**
+
+```java
+// ❌ BAD: No explicit order
+@Bean
+public CorsWebFilter corsWebFilter() {
+    // Relies on default order - fragile!
+}
+
+// ✅ GOOD: Explicit order
+@Bean
+@Order(-100)
+public CorsWebFilter corsWebFilter() {
+    // Clear intent, predictable behavior
+}
+```
+
+**Why CORS Must Be First:**
+
+CORS preflight requests (OPTIONS):
+- Don't include `Authorization` header
+- Don't include request body
+- Just check if CORS allows the actual request
+
+If authentication runs before CORS:
+```
+OPTIONS /api/users
+↓
+Authentication Filter: No JWT token → 401 Unauthorized
+↓
+CORS Filter: Never reached
+↓
+Browser: CORS error (even though it's really an auth error)
+```
+
+**Best Practice: Use Constants**
+
+```java
+public class FilterOrder {
+    public static final int CORS_FILTER = -100;
+    public static final int LOGGING_FILTER = 0;
+    public static final int AUTH_FILTER = 1;
+    public static final int RATE_LIMIT_FILTER = 2;
+}
+
+@Bean
+@Order(FilterOrder.CORS_FILTER)
+public CorsWebFilter corsWebFilter() {
+    // Implementation
+}
+```
+
+**Global vs Route-Specific Filters:**
+
+**Global Filters** (apply to all routes):
+```java
+@Component
+@Order(-100)
+public class GlobalCorsFilter implements GlobalFilter {
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        // Runs for ALL routes
+        return chain.filter(exchange);
+    }
+}
+```
+
+**Route-Specific Filters** (apply to specific routes):
+```java
+.route("auth-service", r -> r
+    .path("/api/auth/**")
+    .filters(f -> f.filter(someFilter))  // Only for this route
+    .uri("lb://AUTH-SERVICE"))
+```
+
+**My Implementation:**
+
+```java
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    @Order(-100)  // Explicit high priority
+    public CorsWebFilter corsWebFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return new CorsWebFilter(source);
+    }
+}
+```
+
+**Strong Interview Answer:**
+> "I control filter order using `@Order` annotation where lower numbers execute first. The most critical order is ensuring CORS filter runs before authentication. I use `@Order(-100)` on CorsWebFilter because CORS preflight OPTIONS requests don't contain JWT tokens - if authentication ran first, all preflight requests would fail with 401 Unauthorized before CORS headers could be added. My typical order is: CORS (-100), Logging (0), Authentication (1), Rate Limiting (2), Authorization (3). For route-specific filters in GatewayConfig, they execute in the order added to the filter chain. I use constants like FilterOrder.CORS_FILTER to make ordering explicit and maintainable, rather than relying on Spring's default behavior which can change between versions."
+
+---
+
+## Build & Deployment
+
+### Q30: How do you optimize JVM settings for different microservices in Docker?
+
+**Short Answer:**
+
+Tailor JVM flags based on service workload. Use **container-aware settings**, **appropriate GC**, and **workload-specific optimizations**.
+
+**Common JVM Optimizations for All Services:**
+
+```dockerfile
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0"
+```
+
+| Flag | Purpose | Why Important |
+|------|---------|---------------|
+| `-Djava.security.egd=file:/dev/./urandom` | Non-blocking random number generation | Faster startup (2-5 seconds improvement) |
+| `-XX:+UseContainerSupport` | JVM respects container memory limits | Prevents OOM kills in Kubernetes |
+| `-XX:MaxRAMPercentage=75.0` | Use 75% of container memory | Leaves 25% for OS and overhead |
+
+**Service-Specific Optimizations:**
+
+**1. Eureka Server (Service Discovery)**
+```dockerfile
+# Basic settings - Eureka is lightweight
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0"
+```
+**Why:** Eureka just maintains a registry in memory. No heavy computation, no GC tuning needed.
+
+---
+
+**2. Auth Service (JWT Token Generation)**
+```dockerfile
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:+UseG1GC"
+```
+
+| Flag | Why for Auth Service |
+|------|---------------------|
+| `+UseG1GC` | G1 Garbage Collector handles frequent short-lived objects (JWT tokens) better than default |
+| `egd=urandom` | **CRITICAL** for JWT - SecureRandom blocks on `/dev/random`, causing 30+ second delays |
+
+**Why G1GC for Auth Service?**
+- Auth service creates **many short-lived objects**: JWT tokens, password hashes, user DTOs
+- G1GC is **better at handling mixed workloads** (short-lived + long-lived objects)
+- Reduces pause times during token generation bursts
+
+---
+
+**3. URL Service (String-Heavy Workload)**
+```dockerfile
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:+UseG1GC \
+               -XX:+UseStringDeduplication"
+```
+
+| Flag | Why for URL Service |
+|------|-------------------|
+| `+UseStringDeduplication` | URLs have common patterns (`http://`, `www.`, `.com`) - deduplicate to save 20-30% memory |
+| `+UseG1GC` | Required for string deduplication (only works with G1) |
+
+**How String Deduplication Works:**
+```
+Without deduplication:
+"http://example.com"  → 18 bytes
+"http://google.com"   → 17 bytes
+"http://github.com"   → 17 bytes
+Total: 52 bytes
+
+With deduplication:
+"http://"      → 7 bytes (shared)
+"example.com"  → 11 bytes
+"google.com"   → 10 bytes
+"github.com"   → 10 bytes
+Total: 38 bytes (27% savings)
+```
+
+**Real Impact:** In URL shortener with 100K URLs, saves ~25-30 MB of memory.
+
+---
+
+**4. API Gateway (Low-Latency Reactive Workload)**
+```dockerfile
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:+UseG1GC \
+               -XX:MaxGCPauseMillis=200 \
+               -XX:+ParallelRefProcEnabled"
+```
+
+| Flag | Why for API Gateway |
+|------|-------------------|
+| `MaxGCPauseMillis=200` | Target max 200ms GC pause - **critical for low-latency gateway** |
+| `ParallelRefProcEnabled` | Parallel reference processing speeds up GC in reactive event loops |
+| `+UseG1GC` | Low-latency garbage collection (vs default parallel GC with longer pauses) |
+
+**Why Low GC Pause Matters for Gateway:**
+```
+Scenario: Gateway handling 1000 req/sec
+
+❌ Without MaxGCPauseMillis (default ~1 second pause):
+1000 requests arrive → GC pause 1 second → 1000 requests timeout → Bad!
+
+✅ With MaxGCPauseMillis=200:
+1000 requests arrive → GC pause 200ms → 200 requests delayed slightly → OK!
+```
+
+**Why ParallelRefProcEnabled for Reactive:**
+- Reactive programming creates many **weak references** (Mono/Flux subscriptions)
+- Parallel processing reduces GC pause time by 30-40%
+- Important when event loop is processing thousands of concurrent requests
+
+---
+
+**5. Analytics Service (Standard Workload)**
+```dockerfile
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom \
+               -XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:+UseG1GC"
+```
+**Why:** Standard database CRUD operations. G1GC provides good overall performance.
+
+---
+
+**Comparison Table:**
+
+| Service | G1GC | String Dedup | MaxGCPauseMillis | ParallelRefProc | Why Different |
+|---------|------|--------------|------------------|-----------------|---------------|
+| **Eureka** | ❌ | ❌ | ❌ | ❌ | Lightweight registry, default GC fine |
+| **Auth** | ✅ | ❌ | ❌ | ❌ | Many short-lived objects (JWT tokens) |
+| **URL** | ✅ | ✅ | ❌ | ❌ | Many duplicate strings (URLs) |
+| **Gateway** | ✅ | ❌ | ✅ 200ms | ✅ | Low-latency reactive workload |
+| **Analytics** | ✅ | ❌ | ❌ | ❌ | Standard CRUD operations |
+
+---
+
+**Health Check Start Period Differences:**
+
+Different services need different startup grace periods:
+
+```dockerfile
+# Eureka Server - Fastest (no external dependencies)
+HEALTHCHECK --start-period=40s
+
+# API Gateway - Fast (only needs Eureka)
+HEALTHCHECK --start-period=45s
+
+# Auth/URL/Analytics - Slower (needs DB + Eureka)
+HEALTHCHECK --start-period=60s
+```
+
+**Why Different Start Periods?**
+
+```
+Eureka Server startup:
+- Load application.yml → 2s
+- Initialize Eureka registry → 5s
+- Start HTTP server → 3s
+Total: ~10s (40s grace period = 4x buffer)
+
+Auth Service startup:
+- Load application.yml → 2s
+- Connect to PostgreSQL → 8s (connection pool warmup)
+- Initialize Eureka client → 5s
+- Load JWT keys → 3s
+- Start HTTP server → 3s
+Total: ~21s (60s grace period = 3x buffer)
+```
+
+---
+
+**Interview Pro Tip:**
+
+> "I optimize JVM settings based on service workload. For example, my URL Service uses `UseStringDeduplication` because URLs have common patterns like 'http://' and '.com', saving 20-30% memory. The API Gateway uses `MaxGCPauseMillis=200` because it's a reactive service handling thousands of concurrent requests - long GC pauses would cause timeouts. Auth Service needs `egd=/dev/urandom` because JWT generation uses SecureRandom, which can block for 30+ seconds on `/dev/random`. I always use `UseContainerSupport` to prevent OOM kills in Kubernetes."
+
+**Common JVM Mistakes in Docker:**
+
+```dockerfile
+# ❌ BAD: JVM doesn't respect container limits
+java -Xmx2G -jar app.jar
+# Container has 1GB limit → OOM killed by Kubernetes
+
+# ✅ GOOD: JVM auto-detects container limits
+java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -jar app.jar
+# Container has 1GB → JVM uses 750MB
+```
+
+---
+
 ## Quick Interview Tips
 
 ### Do's ✅
@@ -1702,6 +2311,9 @@ public class UserController {
 
 6. **Explain trade-offs**, not just solutions
    - "Eureka is simpler to learn but K8s DNS is production-standard"
+
+7. **For reactive programming questions**, emphasize strategic use over blind adoption
+   - "Reactive programming provides high throughput through non-blocking I/O, but adds complexity. I use it strategically - at the API Gateway for high concurrency, but keep backend services blocking for simplicity. The key is understanding when thread efficiency matters more than developer productivity."
 
 ---
 

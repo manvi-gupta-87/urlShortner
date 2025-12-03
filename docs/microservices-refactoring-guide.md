@@ -3094,77 +3094,85 @@ pg_dump urlshortener --table=urls | psql url_db
 
 ---
 
-## **PHASE 9: Docker Setup (Day 4 - 4 hours)**
+## **PHASE 9: Docker Setup (Day 4 - 4 hours)** ✅ COMPLETE
 
-### **Step 9.1: Create Dockerfiles for Each Service**
+### **Step 9.1: Create Production-Ready Dockerfiles**
 
-**Template Dockerfile for all services:**
+**Production Dockerfiles created with:**
+- Multi-stage builds (build stage + runtime stage)
+- Non-root user for security
+- Health checks for container orchestration
+- JVM container awareness and optimization
+- Layer caching for faster rebuilds
+- Comprehensive inline documentation
 
-```dockerfile
-# microservices/service-discovery/Dockerfile
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/service-discovery-1.0.0.jar app.jar
-EXPOSE 8761
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
+**Files created:**
+- `microservices/eureka-server/Dockerfile` - Service discovery with health checks
+- `microservices/auth-service/Dockerfile` - JWT service with G1GC optimization
+- `microservices/url-service/Dockerfile` - URL service with string deduplication
+- `microservices/analytics-service/Dockerfile` - Analytics service
+- `microservices/api-gateway/Dockerfile` - Reactive gateway with low-latency GC tuning
 
-**Create Dockerfiles:**
-
-```bash
-cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
-
-# Service Discovery
-cat > service-discovery/Dockerfile << 'EOF'
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/service-discovery-1.0.0.jar app.jar
-EXPOSE 8761
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-
-# API Gateway
-cat > api-gateway/Dockerfile << 'EOF'
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/api-gateway-1.0.0.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-
-# Auth Service
-cat > auth-service/Dockerfile << 'EOF'
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/auth-service-1.0.0.jar app.jar
-EXPOSE 8081
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-
-# URL Service
-cat > url-service/Dockerfile << 'EOF'
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/url-service-1.0.0.jar app.jar
-EXPOSE 8082
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-
-# Analytics Service
-cat > analytics-service/Dockerfile << 'EOF'
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY target/analytics-service-1.0.0.jar app.jar
-EXPOSE 8083
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-```
+**Key Docker features used:**
+1. **Multi-stage builds**: Reduces final image size by ~200MB (Maven build → JRE runtime)
+2. **Layer caching**: POM files copied separately to cache dependencies
+3. **Non-root user**: Security best practice (creates `spring:spring` user)
+4. **Health checks**: Container marked unhealthy if actuator endpoint fails
+5. **JVM optimization**: Container-aware memory limits, G1GC, parallel GC
 
 ---
 
-### **Step 9.2: Update docker-compose.yml**
+### **Step 9.2: Create Docker Compose Orchestration**
 
-The docker-compose.yml from the guide already references these Dockerfiles.
+**docker-compose.yml created with:**
+- PostgreSQL with named volume for data persistence
+- Service dependency chain with health check conditions
+- Custom network for service isolation
+- Environment variable configuration
+- Health checks on all services
+
+**Service startup order:**
+```
+postgres → eureka-server → auth/url/analytics services → api-gateway
+```
+
+**Files created:**
+- `docker-compose.yml` - Orchestrates all 6 services (postgres + 5 microservices)
+- `.dockerignore` - Optimizes build context (excludes target/, .git/, docs/)
+
+---
+
+### **Step 9.3: Production Dockerfile Patterns Explained**
+
+**Multi-stage build pattern:**
+```dockerfile
+# Stage 1: Build with full JDK + Maven
+FROM maven:3.9-eclipse-temurin-17-alpine AS build
+WORKDIR /app
+COPY pom.xml .
+COPY microservices/service-name/pom.xml microservices/service-name/
+RUN mvn dependency:go-offline -B  # Cached layer
+COPY microservices/service-name/src microservices/service-name/src
+RUN mvn clean package -DskipTests -B
+
+# Stage 2: Runtime with lightweight JRE only
+FROM eclipse-temurin:17-jre-alpine
+RUN addgroup -S spring && adduser -S spring -G spring
+WORKDIR /app
+COPY --from=build --chown=spring:spring /app/microservices/service-name/target/*.jar app.jar
+USER spring:spring
+EXPOSE 8081
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8081/actuator/health
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+```
+
+**Why this pattern?**
+- Build stage uses Maven to compile code (not needed at runtime)
+- Runtime stage only has JRE + JAR (~150MB vs ~350MB with JDK)
+- Layer caching: Dependencies downloaded only when POM changes
+- Non-root user: Containers run as `spring:spring`, not root
+- Health checks: K8s/Docker Swarm can auto-restart unhealthy containers
 
 ---
 
@@ -4588,15 +4596,15 @@ Before starting implementation:
 
 As you complete each phase, check it off:
 
-- [ ] **Phase 0:** Prerequisites complete
-- [ ] **Phase 1:** Parent POM and module structure created
-- [ ] **Phase 2:** Shared library with common error DTOs and exceptions
-- [ ] **Phase 3:** Eureka server running on :8761
-- [ ] **Phase 4:** Auth service running on :8081
-- [ ] **Phase 5:** URL service running on :8082
-- [ ] **Phase 6:** Analytics service running on :8083
-- [ ] **Phase 7:** API Gateway running on :8080 with authentication
-- [ ] **Phase 8:** Database strategy confirmed
+- [x] **Phase 0:** Prerequisites complete
+- [x] **Phase 1:** Parent POM and module structure created
+- [x] **Phase 2:** Shared library with common error DTOs and exceptions
+- [x] **Phase 3:** Eureka server running on :8761
+- [x] **Phase 4:** Auth service running on :8081
+- [x] **Phase 5:** URL service running on :8082
+- [x] **Phase 6:** Analytics service running on :8083
+- [x] **Phase 7:** API Gateway running on :8080 with authentication and reactive programming
+- [x] **Phase 8:** Database strategy confirmed (Shared DB with service-owned tables)
 - [ ] **Phase 9:** Dockerfiles created for all services
 - [ ] **Phase 10:** All services built and tested
 - [ ] **Phase 11:** Documentation complete
