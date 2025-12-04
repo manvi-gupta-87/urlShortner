@@ -3176,12 +3176,13 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 
 ---
 
-## **PHASE 10: Building & Testing (Day 4-5 - 6 hours)**
+## **PHASE 10: Building & Testing (Day 4-5 - 6 hours)** ✅ BUILD COMPLETE
 
-### **Step 10.1: Build Services in Correct Order**
+### **Step 10.1: Build Services in Correct Order** ✅ COMPLETE
 
 **⚠️ CRITICAL: Build order matters! Shared-library must be built first.**
 
+**Build Commands:**
 ```bash
 cd /Users/manvigupta/Downloads/manvi/manvi-projects/urlShortner/microservices
 
@@ -3196,9 +3197,31 @@ cd ..
 # Step 3: Build all services
 mvn clean install -DskipTests
 
+# Step 4: Build API Gateway separately (if not in parent modules)
+cd api-gateway
+mvn clean install -DskipTests
+cd ..
+
 # Verify JARs created
 find . -name "*.jar" -type f | grep -E "(auth|url|analytics|api-gateway|service-discovery)"
 ```
+
+**Build Results:**
+```
+✅ service-discovery-1.0.0.jar (Eureka Server)
+✅ auth-service-app-1.0.0.jar
+✅ url-service-1.0.0.jar
+✅ analytics-service-app-1.0.0.jar
+✅ api-gateway-1.0.0.jar
+```
+
+**Issues Fixed:**
+1. **JWT API Compatibility**: Updated API Gateway's JwtUtil.java to use JJWT 0.12.x API
+   - Changed `Jwts.parserBuilder()` → `Jwts.parser()`
+   - Changed `.setSigningKey()` → `.verifyWith()`
+   - Changed `.parseClaimsJws()` → `.parseSignedClaims()`
+   - Changed `.getBody()` → `.getPayload()`
+   - Changed return type from `Key` → `SecretKey`
 
 ---
 
