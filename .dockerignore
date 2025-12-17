@@ -3,8 +3,9 @@
 # Prevents unnecessary files from being sent to Docker daemon
 
 # Maven build artifacts
-# These are generated during Docker build, no need to copy from host
-**/target/
+# Exclude target contents except JAR files which are needed for Docker
+**/target/**
+!**/target/*.jar
 **/bin/
 
 # IDE files - not needed in containers

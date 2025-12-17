@@ -42,11 +42,17 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
                 if (!jwtUtil.validateToken(token)) {
                     return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
                 }
+
+                // Extract username and pass to downstream services
+                String username = jwtUtil.extractUsername(token);
+                ServerHttpRequest modifiedRequest = request.mutate()
+                        .header("X-User-Name", username)
+                        .build();
+
+                return chain.filter(exchange.mutate().request(modifiedRequest).build());
             } catch (Exception e) {
                 return onError(exchange, "Token validation failed: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
             }
-
-            return chain.filter(exchange);
         };
     }
 

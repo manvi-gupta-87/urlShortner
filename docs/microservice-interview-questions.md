@@ -20,6 +20,7 @@
 10. [Kubernetes & Helm Deployment](#kubernetes--helm-deployment)
 11. [Real Interview Scenarios](#real-interview-scenarios)
 12. [Quick Interview Tips](#quick-interview-tips)
+13. [Shared Library Architecture](#shared-library-architecture) - **NEW** Design principles & debugging
 
 ---
 
@@ -2393,6 +2394,274 @@ java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -jar app.jar
 
 ---
 
+## Shared Library Architecture
+
+### Q27: What should a shared library contain in microservices architecture?
+
+**Short Answer:**
+
+A shared library should be **lightweight and framework-agnostic**. It should contain only truly shared code that doesn't force framework choices on consuming services.
+
+**What SHOULD be in a shared library:**
+
+| Category | Examples | Why |
+|----------|----------|-----|
+| **DTOs** | `ErrorResponse`, `PagedResponse` | Plain data classes, no framework deps |
+| **Custom Exceptions** | `UrlNotFoundException`, `UnauthorizedAccessException` | Plain Java classes |
+| **Utility Classes** | `DateUtils`, `StringUtils` | No framework dependencies |
+| **Constants/Enums** | `ErrorCodes`, `StatusCodes` | Plain Java |
+| **Validation Annotations** | Custom validators | Only needs jakarta.validation API |
+
+**What should NOT be in a shared library:**
+
+| Category | Examples | Why NOT |
+|----------|----------|---------|
+| **Controllers** | `@RestController`, `@RestControllerAdvice` | Forces Spring Web on all services |
+| **Security Configs** | `@EnableWebSecurity`, `SecurityFilterChain` | Forces Spring Security on all services |
+| **JPA Entities** | `@Entity`, `@Repository` | Forces Spring Data JPA on all services |
+| **Framework Configs** | `@Configuration` beans | Tight coupling to specific framework |
+
+**Strong Interview Answer:**
+> "A shared library should follow the principle of minimal dependency. It should contain only DTOs, custom exceptions, utility classes, and constants - things that are truly shared and don't force framework choices. I learned this the hard way when our shared library included `@RestControllerAdvice` for exception handling, which forced every service to include Spring Web and Spring Security. This caused issues when we added an API Gateway using WebFlux - it couldn't use the same exception handler because WebFlux requires reactive security. The fix was moving exception handlers to each service and keeping only framework-agnostic code in the shared library. This follows the microservices principle of loose coupling - each service should be free to choose its own frameworks."
+
+---
+
+### Q28: Why shouldn't a shared library contain Spring Security dependencies?
+
+**Short Answer:**
+
+Including Spring Security in a shared library creates **tight coupling** and **framework incompatibility** issues.
+
+**Real Problem We Encountered:**
+
+```
+shared-library (contained spring-boot-starter-security)
+    ├── auth-service ✅ (needs servlet security)
+    ├── url-service ✅ (needs servlet security)
+    ├── analytics-service ✅ (needs servlet security)
+    └── api-gateway ❌ FAILED (needs REACTIVE security)
+```
+
+**The Conflict:**
+
+| Component | Required Security | Conflict |
+|-----------|------------------|----------|
+| Spring MVC Services | `@EnableWebSecurity` (Servlet) | None |
+| Spring Cloud Gateway | `@EnableWebFluxSecurity` (Reactive) | **Incompatible!** |
+
+**Error Encountered:**
+```
+Spring MVC found on classpath, which is incompatible with Spring Cloud Gateway
+```
+
+**Why This Happens:**
+
+1. Spring Cloud Gateway uses **WebFlux** (non-blocking, reactive)
+2. `spring-boot-starter-security` auto-configures **servlet-based** security
+3. Spring Boot detects both servlet and reactive → **conflict**
+
+**The Fix:**
+
+```
+shared-library (NO framework dependencies)
+    ├── auth-service (adds spring-boot-starter-security itself)
+    ├── url-service (adds spring-boot-starter-security itself)
+    ├── analytics-service (adds spring-boot-starter-security itself)
+    └── api-gateway (adds spring-boot-starter-security → auto-detects WebFlux)
+```
+
+**Strong Interview Answer:**
+> "Including Spring Security in a shared library is an anti-pattern because different services may require different security implementations. We encountered this when our shared library included spring-boot-starter-security, which worked for our servlet-based services but broke our API Gateway. Spring Cloud Gateway requires WebFlux and reactive security, but the shared library's security dependency triggered servlet-based auto-configuration, causing a conflict. The solution was removing security from the shared library and letting each service declare its own security dependency. Spring Boot then auto-detects whether to use servlet or reactive security based on other dependencies. This follows the microservices principle - services should be independently deployable with their own technology choices."
+
+---
+
+### Q29: How do you handle exception handling across microservices without putting it in a shared library?
+
+**Short Answer:**
+
+**Share the DTOs and exception classes, not the handlers.** Each service implements its own `@RestControllerAdvice` or reactive error handler.
+
+**Architecture:**
+
+```
+shared-library/
+├── dto/
+│   └── ErrorResponse.java        ✅ (plain Lombok DTO)
+└── exception/
+    ├── UrlNotFoundException.java      ✅ (plain Java)
+    ├── UrlExpiredException.java       ✅ (plain Java)
+    └── UnauthorizedAccessException.java ✅ (plain Java)
+
+url-service/
+└── exception/
+    └── GlobalExceptionHandler.java    ✅ (service-specific, uses shared exceptions)
+
+auth-service/
+└── exception/
+    └── GlobalExceptionHandler.java    ✅ (handles auth-specific exceptions)
+
+api-gateway/
+└── config/
+    └── GlobalErrorWebExceptionHandler.java ✅ (REACTIVE exception handler)
+```
+
+**Why Different Handlers Per Service:**
+
+| Service | Exception Types | Handler Type |
+|---------|----------------|--------------|
+| **url-service** | `UrlNotFoundException`, `UrlExpiredException` | `@RestControllerAdvice` (Servlet) |
+| **auth-service** | `UsernameNotFoundException`, `BadCredentialsException` | `@RestControllerAdvice` (Servlet) |
+| **api-gateway** | Gateway-specific errors, routing failures | `WebExceptionHandler` (Reactive) |
+
+**Code Example - Shared Exception:**
+```java
+// shared-library: Plain Java class, no Spring deps
+public class UrlNotFoundException extends RuntimeException {
+    public UrlNotFoundException(String shortUrl) {
+        super("URL not found: " + shortUrl);
+    }
+}
+```
+
+**Code Example - Service-Specific Handler:**
+```java
+// url-service: Uses Spring Web
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(UrlNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUrlNotFound(UrlNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse.builder()
+                .status(404)
+                .message(ex.getMessage())
+                .build());
+    }
+}
+```
+
+**Strong Interview Answer:**
+> "The key insight is separating what to share from how to handle it. The shared library contains the exception classes and the ErrorResponse DTO - these are plain Java with no framework dependencies. Each service then implements its own exception handler using the appropriate framework. For servlet-based services, that's `@RestControllerAdvice`. For reactive services like API Gateway, it's `WebExceptionHandler`. This approach ensures consistent error response format across services while allowing each service to choose its own framework. It also means services can handle different exceptions - auth-service handles `UsernameNotFoundException`, url-service handles `UrlNotFoundException`, but both return the same `ErrorResponse` structure for client consistency."
+
+---
+
+### Q30: What issues can occur when running microservices in Docker that don't appear in local development?
+
+**Short Answer:**
+
+Docker introduces **network isolation**, **different DNS resolution**, and **startup timing** issues that don't exist when running services locally.
+
+**Common Issues We Encountered:**
+
+| Issue | Local Development | Docker | Solution |
+|-------|------------------|--------|----------|
+| **Service URLs** | `localhost:8761` works | Container can't reach `localhost` | Use Docker service names: `eureka-server:8761` |
+| **Health Checks** | curl available | Some images lack curl | Use `wget` or install curl in Dockerfile |
+| **Startup Order** | Start services manually | Race conditions | Use `depends_on` with `condition: service_healthy` |
+| **Network Discovery** | All on same host | Isolated networks | Define Docker network, use service names |
+| **Database Connections** | Connect to `localhost:5432` | Container isolation | Use `postgres:5432` (service name) |
+
+**Example Fix - Eureka URL:**
+
+```yaml
+# application.yml - Works locally AND in Docker
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+
+# docker-compose.yml - Override for Docker
+services:
+  url-service:
+    environment:
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+```
+
+**Example Fix - Health Checks:**
+
+```yaml
+# docker-compose.yml
+services:
+  auth-service:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s  # Give Spring time to start
+```
+
+**Strong Interview Answer:**
+> "Docker introduces several networking challenges that don't appear locally. First, containers can't use `localhost` to reach other services - you must use Docker service names as hostnames. We solved this with environment variables: `${EUREKA_SERVER_URL:http://localhost:8761/eureka/}` defaults to localhost for development but gets overridden in docker-compose. Second, health checks are critical for proper startup ordering - we use `depends_on` with `condition: service_healthy` to ensure services start only after dependencies are ready. Third, Spring Security can block health endpoints, returning 403 instead of health status. We had to add `.requestMatchers(\"/actuator/**\").permitAll()` to allow Docker health checks. Finally, Spring Cloud Gateway required special handling - we had to set `spring.main.web-application-type: reactive` to prevent Spring MVC auto-configuration conflicts."
+
+---
+
+### Q31: How do you pass user context between services in a microservices architecture?
+
+**Short Answer:**
+
+There are three common approaches: **JWT propagation**, **header forwarding**, and **context injection**.
+
+**Our Approach - Header Forwarding:**
+
+```
+Client → API Gateway → URL Service
+   │         │              │
+   │  JWT    │  X-User-Name │
+   └─────────┴──────────────┘
+```
+
+**Implementation:**
+
+**1. API Gateway extracts username from JWT:**
+```java
+@Component
+public class AuthenticationFilter extends AbstractGatewayFilterFactory<Config> {
+
+    @Override
+    public GatewayFilter apply(Config config) {
+        return (exchange, chain) -> {
+            String token = extractToken(exchange.getRequest());
+            String username = jwtUtil.extractUsername(token);
+
+            // Add username to header for downstream services
+            ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
+                .header("X-User-Name", username)
+                .build();
+
+            return chain.filter(exchange.mutate().request(modifiedRequest).build());
+        };
+    }
+}
+```
+
+**2. Downstream service reads header:**
+```java
+@RestController
+public class UrlController {
+
+    @PostMapping("/api/v1/urls")
+    public ResponseEntity<UrlResponse> createUrl(
+            @RequestBody UrlRequest request,
+            @RequestHeader("X-User-Name") String username) {  // From gateway
+        return ResponseEntity.ok(urlService.createShortUrl(request, username));
+    }
+}
+```
+
+**Comparison of Approaches:**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **JWT Propagation** | Full claims available, self-verifying | Token size, multiple validations |
+| **Header Forwarding** | Simple, lightweight | Trust boundary at gateway only |
+| **Context Injection** | Type-safe, framework support | More complex setup |
+
+**Strong Interview Answer:**
+> "We use header forwarding where the API Gateway validates the JWT once and extracts the username into an `X-User-Name` header that downstream services read. This is simpler than full JWT propagation because downstream services don't need JWT libraries or secrets. The security model trusts the API Gateway as the authentication boundary - if a request reaches a downstream service, it came through the gateway and is authenticated. The alternative is propagating the full JWT to each service, which gives access to all claims but requires each service to validate the token and know the secret. For internal service-to-service calls, we could also use a service mesh with mTLS where identity is established at the infrastructure layer. Our approach works well for a gateway-centric architecture where all external traffic enters through one point."
+
+---
+
 ## Additional Resources
 
 **Books:**
@@ -2412,10 +2681,10 @@ java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -jar app.jar
 
 ---
 
-**Document Version:** 1.3
-**Last Updated:** November 18, 2025
+**Document Version:** 1.4
+**Last Updated:** December 16, 2025
 **Next Review:** Before each interview
-**New in v1.3:** Added comprehensive Reactive Programming section with 5 questions (Q22-Q26) covering reactive fundamentals, Spring WebFlux vs MVC, Reactive vs CompletableFuture, handling dependent calls with flatMap, event loops and callbacks, and companies using reactive programming
+**New in v1.4:** Added Shared Library Architecture section with 5 questions (Q27-Q31) covering shared library design principles, Spring Security dependency issues, exception handling patterns, Docker networking challenges, and user context propagation between services - based on real debugging experience
 
 ---
 

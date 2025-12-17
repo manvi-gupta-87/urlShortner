@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -25,9 +24,10 @@ public class UrlController {
     private final UrlRepository urlRepository;
 
     @PostMapping
-    public ResponseEntity<UrlResponseDto> createShortUrl(@Valid @RequestBody UrlRequestDto request,
-                                                         Principal principal) {
-        return ResponseEntity.ok(urlService.createShortUrl(request, principal.getName()));
+    public ResponseEntity<UrlResponseDto> createShortUrl(
+            @Valid @RequestBody UrlRequestDto request,
+            @RequestHeader("X-User-Name") String username) {
+        return ResponseEntity.ok(urlService.createShortUrl(request, username));
     }
 
     @GetMapping("/{shortUrl}")
@@ -61,7 +61,8 @@ public class UrlController {
     }
 
     @GetMapping
-    public ResponseEntity<List<UrlResponseDto>> getUserUrls(Principal principal) {
-        return ResponseEntity.ok(urlService.getAllUserUrls(principal.getName()));
+    public ResponseEntity<List<UrlResponseDto>> getUserUrls(
+            @RequestHeader("X-User-Name") String username) {
+        return ResponseEntity.ok(urlService.getAllUserUrls(username));
     }
 } 

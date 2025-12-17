@@ -6,9 +6,9 @@ spring:
     name: url-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/urlshortener
-    username: urlshortener_user
-    password: urlshortener_pass
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/urlshortener}
+    username: ${SPRING_DATASOURCE_USERNAME:urlshortener_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:urlshortener_pass}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -26,7 +26,7 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
     register-with-eureka: true
     fetch-registry: true
   instance:

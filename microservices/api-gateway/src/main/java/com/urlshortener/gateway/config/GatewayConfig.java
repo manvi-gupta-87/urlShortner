@@ -18,18 +18,18 @@ public class GatewayConfig {
         return builder.routes()
                 // Auth Service Routes (no authentication needed)
                 .route("auth-service", r -> r
-                        .path("/api/auth/**")
+                        .path("/api/v1/auth/**")
                         .uri("lb://AUTH-SERVICE"))
 
                 // URL Service Routes (authentication required)
                 .route("url-service", r -> r
-                        .path("/api/urls/**")
+                        .path("/api/v1/urls/**")
                         .filters(f -> f.filter(authFilter.apply(new AuthenticationFilter.Config())))
                         .uri("lb://URL-SERVICE"))
 
                 // Analytics Service Routes (authentication required)
                 .route("analytics-service", r -> r
-                        .path("/api/analytics/**")
+                        .path("/api/v1/analytics/**")
                         .filters(f -> f.filter(authFilter.apply(new AuthenticationFilter.Config())))
                         .uri("lb://ANALYTICS-SERVICE"))
 

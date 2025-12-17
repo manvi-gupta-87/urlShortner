@@ -39,8 +39,9 @@ public class SecurityConfig {
             }))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/**").permitAll() // Allow health checks for Docker
                 .requestMatchers("/api/v1/auth/**").permitAll()
-                    .requestMatchers("/api/v1/urls/**").authenticated()
+                .requestMatchers("/api/v1/urls/**").authenticated()
                 .requestMatchers("/{shortCode}").permitAll()
                 .requestMatchers("/h2-console/**").permitAll() // Allow H2 console access
                 .anyRequest().authenticated()
