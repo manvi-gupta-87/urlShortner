@@ -12,3 +12,20 @@ eureka:
   server:
     enable-self-preservation: false
     eviction-interval-timer-in-ms: 4000
+
+# Actuator endpoints for observability
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true

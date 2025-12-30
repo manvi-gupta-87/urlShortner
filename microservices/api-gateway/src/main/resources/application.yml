@@ -31,3 +31,22 @@ logging:
   level:
     org.springframework.cloud.gateway: DEBUG
     com.urlshortener: DEBUG
+
+# Actuator endpoints for observability (reactive mode auto-detected)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    gateway:
+      enabled: true  # Enables /actuator/gateway/routes to see all routes
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
