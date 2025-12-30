@@ -40,6 +40,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/**").permitAll() // Allow health checks for Docker
+                .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll() // Swagger
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/urls/**").authenticated()
                 .requestMatchers("/{shortCode}").permitAll()

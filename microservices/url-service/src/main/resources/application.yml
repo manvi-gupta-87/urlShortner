@@ -47,6 +47,14 @@ url:
   generator:
     strategy: DISTRIBUTED
 
+# OpenAPI/Swagger Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
 # Actuator endpoints for observability
 management:
   endpoints:
