@@ -34,6 +34,8 @@
         <lombok.version>1.18.30</lombok.version>
         <!-- OpenAPI/Swagger Documentation -->
         <springdoc.version>2.3.0</springdoc.version>
+        <!-- Distributed Tracing with Zipkin -->
+        <micrometer-tracing.version>1.2.0</micrometer-tracing.version>
     </properties>
 
     <dependencyManagement>

@@ -71,3 +71,18 @@ management:
       enabled: true
     readinessState:
       enabled: true
+  # Distributed Tracing Configuration
+  # ===================================
+  # Sampling: What percentage of requests should be traced?
+  # - 1.0 = 100% (for development - trace every request)
+  # - 0.1 = 10% (for production - reduces overhead)
+  tracing:
+    sampling:
+      probability: 1.0
+  # Zipkin: Where to send the trace data
+  # - Zipkin collects and displays traces
+  # - In Docker: use service name 'zipkin'
+  # - Locally: use 'localhost'
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}

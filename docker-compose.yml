@@ -69,6 +69,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: urlshortener_pass
       # JWT secret - should be externalized in production
       JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      # Zipkin tracing endpoint
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
     ports:
       # Expose for direct access (optional - usually through gateway)
       - "8081:8081"
@@ -99,6 +101,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
       SPRING_DATASOURCE_USERNAME: urlshortener_user
       SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+      # Zipkin tracing endpoint
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
     ports:
       - "8082:8082"
     depends_on:
@@ -127,6 +131,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
       SPRING_DATASOURCE_USERNAME: urlshortener_user
       SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+      # Zipkin tracing endpoint
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
     ports:
       - "8083:8083"
     depends_on:
@@ -156,6 +162,8 @@ services:
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       # JWT secret - must match auth-service for token validation
       JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      # Zipkin tracing endpoint
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
     ports:
       # Main entry point - all clients connect here
       - "8080:8080"
@@ -176,6 +184,26 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 45s
+      retries: 3
+
+  # Zipkin - Distributed Tracing Server
+  # =====================================
+  # What: Collects and visualizes distributed traces
+  # Why: Debug slow requests, understand service dependencies
+  # How: Services send spans via HTTP to /api/v2/spans
+  # UI: http://localhost:9411 - Search and view traces
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin
+    ports:
+      # Web UI and API endpoint
+      - "9411:9411"
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9411/health || exit 1"]
+      interval: 30s
+      timeout: 5s
       retries: 3
 
 # Named volumes for data persistence

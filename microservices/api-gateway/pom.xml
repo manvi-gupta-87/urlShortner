@@ -71,6 +71,20 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- Distributed Tracing: Micrometer Tracing Bridge -->
+        <!-- Connects Spring Boot to tracing system, generates Trace IDs and Spans -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+
+        <!-- Distributed Tracing: Zipkin Reporter -->
+        <!-- Sends spans to Zipkin server via HTTP -->
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
