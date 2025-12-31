@@ -1,19 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SHARED LIBRARY - STANDALONE POM
+    ================================
+    This is an independent library with NO parent POM reference.
+
+    WHY STANDALONE:
+    - True microservices architecture - each component is independent
+    - Can be versioned and released independently
+    - Can be published to Maven Central/Nexus/Artifactory
+    - Other services depend on this via Maven coordinates, not parent reference
+
+    BUILD ORDER:
+    - This module MUST be built FIRST before any other service
+    - Run: mvn clean install (installs to local .m2 repository)
+    - For production: publish to Nexus/Artifactory/GitHub Packages
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>com.urlshortener</groupId>
-        <artifactId>microservices-parent</artifactId>
-        <version>1.0.0</version>
-    </parent>
-
+    <!-- NO PARENT - Fully standalone library -->
+    <groupId>com.urlshortener</groupId>
     <artifactId>shared-library</artifactId>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Shared Library</name>
+    <description>Shared DTOs, exceptions, and utilities for URL Shortener microservices</description>
+
+    <properties>
+        <!-- Java version -->
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Dependency versions -->
+        <lombok.version>1.18.30</lombok.version>
+        <jakarta.validation.version>3.0.2</jakarta.validation.version>
+        <jackson.version>2.15.3</jackson.version>
+    </properties>
 
     <dependencies>
         <!--
@@ -27,6 +54,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -34,12 +62,14 @@
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
+            <version>${jakarta.validation.version}</version>
         </dependency>
 
         <!-- Jackson annotations for JSON serialization in DTOs -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
+            <version>${jackson.version}</version>
         </dependency>
     </dependencies>
 
@@ -48,7 +78,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
                 <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -58,12 +91,11 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <!-- JAR plugin for creating the library JAR -->
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
             </plugin>
         </plugins>
     </build>

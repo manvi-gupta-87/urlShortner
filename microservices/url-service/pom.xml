@@ -1,18 +1,72 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    URL SERVICE - STANDALONE POM
+    =============================
+    This is an independent service with Spring Boot parent.
+
+    WHY STANDALONE:
+    - True microservices architecture - each service owns its configuration
+    - Can be versioned, built, and deployed independently
+    - No build-time coupling with other services
+
+    DEPENDENCIES:
+    - shared-library: Common DTOs and utilities
+    - auth-service-lib: Feign client to call auth-service
+    - analytics-service-lib: Feign client to call analytics-service
+
+    BUILD ORDER:
+    1. shared-library (mvn install)
+    2. auth-service (mvn install) - provides auth-service-lib
+    3. analytics-service (mvn install) - provides analytics-service-lib
+    4. url-service (mvn install)
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Spring Boot Parent - Standard approach for standalone services -->
     <parent>
-        <groupId>com.urlshortener</groupId>
-        <artifactId>microservices-parent</artifactId>
-        <version>1.0.0</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.3</version>
+        <relativePath/>
     </parent>
 
+    <groupId>com.urlshortener</groupId>
     <artifactId>url-service</artifactId>
+    <version>1.0.0</version>
     <name>URL Service</name>
+    <description>URL shortening, validation, and redirect service</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
+        <springdoc.version>2.3.0</springdoc.version>
+    </properties>
+
+    <!-- Dependency Management -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud BOM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Shared Library - must be installed first -->
+            <dependency>
+                <groupId>com.urlshortener</groupId>
+                <artifactId>shared-library</artifactId>
+                <version>1.0.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Shared Library -->
@@ -25,14 +79,14 @@
         <dependency>
             <groupId>com.urlshortener</groupId>
             <artifactId>auth-service-lib</artifactId>
-            <version>${project.version}</version>
+            <version>1.0.0</version>
         </dependency>
 
         <!-- Analytics Service Lib (for Feign Client) -->
         <dependency>
             <groupId>com.urlshortener</groupId>
             <artifactId>analytics-service-lib</artifactId>
-            <version>${project.version}</version>
+            <version>1.0.0</version>
         </dependency>
 
         <!-- Spring Boot -->

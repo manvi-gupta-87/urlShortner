@@ -1,20 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SERVICE DISCOVERY (EUREKA SERVER) - STANDALONE POM
+    ===================================================
+    This service is fully independent with Spring Boot parent (not custom parent).
+
+    WHY STANDALONE:
+    - True microservices architecture - each service owns its configuration
+    - Can be versioned, built, and deployed independently
+    - No build-time coupling with other services
+
+    DEPENDENCIES:
+    - None on other project modules (pure infrastructure service)
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Spring Boot Parent - Standard approach for standalone services -->
     <parent>
-        <groupId>com.urlshortener</groupId>
-        <artifactId>microservices-parent</artifactId>
-        <version>1.0.0</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.3</version>
+        <relativePath/>
     </parent>
 
+    <groupId>com.urlshortener</groupId>
     <artifactId>service-discovery</artifactId>
+    <version>1.0.0</version>
     <name>Service Discovery (Eureka)</name>
+    <description>Netflix Eureka Server for service registration and discovery</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+    </properties>
+
+    <!-- Spring Cloud BOM for dependency management -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
+        <!-- Eureka Server -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
@@ -32,4 +69,13 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

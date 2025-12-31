@@ -1,18 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    API GATEWAY - STANDALONE POM
+    =============================
+    This is an independent service with Spring Boot parent.
+
+    WHY STANDALONE:
+    - True microservices architecture - each service owns its configuration
+    - Can be versioned, built, and deployed independently
+    - No build-time coupling with other services
+
+    DEPENDENCIES:
+    - shared-library: Common DTOs and utilities
+
+    BUILD ORDER:
+    1. shared-library (mvn install)
+    2. api-gateway (mvn install)
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Spring Boot Parent - Standard approach for standalone services -->
     <parent>
-        <groupId>com.urlshortener</groupId>
-        <artifactId>microservices-parent</artifactId>
-        <version>1.0.0</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.3</version>
+        <relativePath/>
     </parent>
 
+    <groupId>com.urlshortener</groupId>
     <artifactId>api-gateway</artifactId>
+    <version>1.0.0</version>
     <name>API Gateway</name>
+    <description>Spring Cloud Gateway - unified entry point for all microservices</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
+    </properties>
+
+    <!-- Dependency Management -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud BOM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Shared Library - must be installed first -->
+            <dependency>
+                <groupId>com.urlshortener</groupId>
+                <artifactId>shared-library</artifactId>
+                <version>1.0.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Shared Library -->

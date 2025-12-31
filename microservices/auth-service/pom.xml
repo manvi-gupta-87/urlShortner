@@ -1,23 +1,84 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    AUTH SERVICE - STANDALONE PARENT POM
+    =====================================
+    This is an independent multi-module service with Spring Boot parent.
+
+    WHY STANDALONE:
+    - True microservices architecture - each service owns its configuration
+    - Can be versioned, built, and deployed independently
+    - No build-time coupling with other services (except shared-library)
+
+    SUB-MODULES:
+    - auth-service-dto: DTOs shared with other services via Feign
+    - auth-service-lib: Feign client for other services to call auth-service
+    - auth-service-app: The actual Spring Boot application
+
+    BUILD ORDER:
+    - shared-library must be built FIRST (mvn install)
+    - Then: mvn clean install (builds all sub-modules in order)
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Spring Boot Parent - Standard approach for standalone services -->
     <parent>
-        <groupId>com.urlshortener</groupId>
-        <artifactId>microservices-parent</artifactId>
-        <version>1.0.0</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.3</version>
+        <relativePath/>
     </parent>
 
+    <groupId>com.urlshortener</groupId>
     <artifactId>auth-service-parent</artifactId>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
     <name>Auth Service Parent</name>
+    <description>Authentication and user management service</description>
 
     <modules>
         <module>auth-service-dto</module>
         <module>auth-service-lib</module>
         <module>auth-service-app</module>
     </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
+        <springdoc.version>2.3.0</springdoc.version>
+    </properties>
+
+    <!-- Dependency Management - versions for all sub-modules -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud BOM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Shared Library - must be installed first -->
+            <dependency>
+                <groupId>com.urlshortener</groupId>
+                <artifactId>shared-library</artifactId>
+                <version>1.0.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>
