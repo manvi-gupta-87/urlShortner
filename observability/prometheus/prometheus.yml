@@ -1,0 +1,69 @@
+# Prometheus Configuration for URL Shortener Microservices
+# =========================================================
+#
+# WHAT: Prometheus scrape configuration
+# WHY: Tells Prometheus which services to monitor and how often
+#
+# HOW IT WORKS:
+# - Prometheus PULLS metrics from each service's /actuator/prometheus endpoint
+# - Scrapes every 15 seconds (configurable)
+# - Stores time-series data for querying via PromQL
+#
+# INTERVIEW TIP:
+# "Prometheus uses a pull-based model - it actively scrapes metrics from
+# services rather than services pushing to it. This is more resilient
+# because if Prometheus goes down, services aren't affected."
+
+global:
+  # How often to scrape targets
+  scrape_interval: 15s
+  # How often to evaluate alerting rules
+  evaluation_interval: 15s
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus monitors itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Gateway - Entry point for all requests
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    # Add service label for easier filtering in Grafana
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'api-gateway'
+
+  # Auth Service - Authentication and JWT
+  - job_name: 'auth-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['auth-service:8081']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'auth-service'
+
+  # URL Service - URL shortening and redirects
+  - job_name: 'url-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['url-service:8082']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'url-service'
+
+  # Analytics Service - Click tracking
+  - job_name: 'analytics-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['analytics-service:8083']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'analytics-service'

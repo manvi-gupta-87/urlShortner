@@ -1,0 +1,29 @@
+# Grafana Datasource Provisioning
+# ================================
+#
+# WHAT: Auto-configures Prometheus as Grafana's data source
+# WHY: No manual setup needed - Grafana starts with Prometheus ready
+#
+# HOW IT WORKS:
+# - Grafana reads this file on startup
+# - Automatically creates the Prometheus datasource
+# - Uses Docker service name 'prometheus' for connectivity
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # Default datasource for new panels
+    isDefault: true
+    # Access mode: proxy means Grafana backend fetches data
+    access: proxy
+    # URL uses Docker service name
+    url: http://prometheus:9090
+    # Allow editing in UI
+    editable: true
+    jsonData:
+      # Time interval for scraping (matches prometheus.yml)
+      timeInterval: "15s"
+      # HTTP method for queries
+      httpMethod: "POST"
