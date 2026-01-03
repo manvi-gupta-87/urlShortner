@@ -3,9 +3,9 @@ package com.urlshortener.controller;
 import com.urlshortener.dto.UrlAnalyticsResponse;
 import com.urlshortener.dto.UrlRequestDto;
 import com.urlshortener.dto.UrlResponseDto;
-import com.urlshortener.lib.AnalyticsServiceClient;
 import com.urlshortener.model.Url;
 import com.urlshortener.repository.UrlRepository;
+import com.urlshortener.service.AnalyticsClientService;
 import com.urlshortener.service.UrlService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import java.util.List;
 public class UrlController {
 
     private final UrlService urlService;
-    private final AnalyticsServiceClient analyticsServiceClient;
+    private final AnalyticsClientService analyticsClientService;  // Uses Circuit Breaker
     private final UrlRepository urlRepository;
 
     @PostMapping
@@ -49,9 +49,9 @@ public class UrlController {
         Url url = urlRepository.findByShortUrl(shortCode)
                 .orElseThrow(() -> new RuntimeException("URL not found"));
 
-        // Call analytics-service via Feign client
+        // Call analytics-service via Circuit Breaker wrapper
         return ResponseEntity.ok(
-            analyticsServiceClient.getUrlAnalytics(
+            analyticsClientService.getUrlAnalytics(
                 url.getId(),
                 shortCode,
                 url.getOriginalUrl(),

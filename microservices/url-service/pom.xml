@@ -155,6 +155,27 @@
             <artifactId>zipkin-reporter-brave</artifactId>
         </dependency>
 
+        <!-- Resilience4j: Circuit Breaker, Retry, Rate Limiter -->
+        <!-- WHY: Prevents cascade failures when downstream services are unavailable -->
+        <!-- HOW: Wraps service calls with circuit breaker pattern -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
+
+        <!-- Resilience4j: Spring Boot Integration -->
+        <!-- Enables @CircuitBreaker, @Retry, @RateLimiter annotations -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- AOP: Required for Resilience4j annotations to work -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

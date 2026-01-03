@@ -86,3 +86,36 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+# ============================================
+# RESILIENCE4J CIRCUIT BREAKER CONFIGURATION
+# ============================================
+# Circuit Breaker prevents cascade failures when downstream services are unavailable.
+# Instead of waiting for timeouts and exhausting resources, we "fail fast" and return
+# a graceful fallback response.
+#
+# STATE TRANSITIONS:
+# CLOSED (normal) --> OPEN (failing fast) --> HALF-OPEN (testing) --> CLOSED
+#
+resilience4j:
+  circuitbreaker:
+    instances:
+      # Circuit breaker for Analytics Service calls
+      analyticsService:
+        # How many recent calls to evaluate for failure rate
+        slidingWindowSize: 10
+        # Minimum calls before circuit breaker can trip
+        minimumNumberOfCalls: 5
+        # Failure percentage threshold to open circuit (50% = 5 out of 10 failures)
+        failureRateThreshold: 50
+        # How long circuit stays OPEN before transitioning to HALF-OPEN
+        waitDurationInOpenState: 30s
+        # How many calls to allow in HALF-OPEN state for testing
+        permittedNumberOfCallsInHalfOpenState: 3
+        # Automatically transition from OPEN to HALF-OPEN (no manual intervention)
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Which exceptions count as failures
+        recordExceptions:
+          - java.lang.Exception
+          - java.io.IOException
+          - feign.FeignException

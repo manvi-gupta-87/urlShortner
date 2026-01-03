@@ -8,6 +8,7 @@ import java.util.Map;
 @Data
 @Builder
 public class UrlAnalyticsResponse {
+    private Long urlId;
     private String shortCode;
     private String originalUrl;
     private Long totalClicks;
@@ -15,4 +16,7 @@ public class UrlAnalyticsResponse {
     private Map<String, Long> clicksByBrowser;
     private Map<String, Long> clicksByDeviceType;
     private Map<String, Long> clicksByCountry;
+
+    // Message field for fallback responses when analytics is unavailable
+    private String message;
 } 
