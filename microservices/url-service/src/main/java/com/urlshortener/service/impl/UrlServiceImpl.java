@@ -16,6 +16,8 @@ import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,7 +82,8 @@ public class UrlServiceImpl implements UrlService {
     }
 
     @Override
-    @Transactional
+    @Cacheable(value = "urls", key = "#shortUrl")
+    @Transactional(readOnly = true)
     public UrlResponseDto getOriginalUrl(String shortUrl) {
         Url url = urlRepository.findByShortUrl(shortUrl)
                 .orElseThrow(() -> new UrlNotFoundException("URL not found: " + shortUrl));
@@ -93,9 +96,6 @@ public class UrlServiceImpl implements UrlService {
             throw new UrlExpiredException("URL has expired: " + shortUrl);
         }
 
-        url.setClickCount(url.getClickCount() + 1);
-        url = urlRepository.save(url);
-
         return UrlResponseDto.builder()
                 .id(url.getId())
                 .originalUrl(url.getOriginalUrl())
@@ -104,6 +104,12 @@ public class UrlServiceImpl implements UrlService {
                 .clickCount(url.getClickCount())
                 .deactivated(url.getDeactivated())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void incrementClickCount(String shortUrl) {
+        urlRepository.incrementClickCount(shortUrl);
     }
 
     @Override
@@ -135,6 +141,7 @@ public class UrlServiceImpl implements UrlService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "urls", key = "#shortUrl")
     public void deactivateUrl(String shortUrl) {
         Url url = urlRepository.findByShortUrl(shortUrl)
                 .orElseThrow(() -> new UrlNotFoundException("URL not found: " + shortUrl));
