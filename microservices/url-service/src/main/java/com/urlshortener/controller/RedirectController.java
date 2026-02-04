@@ -32,13 +32,14 @@ public class RedirectController {
     @GetMapping("/{shortUrl}")
     public RedirectView redirectToOriginalUrl(@PathVariable String shortUrl, HttpServletRequest request) {
         try {
+            // Step 1: Get URL from cache (Redis) or DB on cache miss
             UrlResponseDto urlResponse = urlService.getOriginalUrl(shortUrl);
-            String originalUrl = urlResponse.getOriginalUrl();
 
-            // TODO: Analytics tracking will be added in Phase 6 when analytics-service is created
-            // Will use Kafka or REST API to track clicks asynchronously
+            // Step 2: Increment click count (atomic DB update, runs on every redirect)
+            urlService.incrementClickCount(shortUrl);
 
-            return new RedirectView(originalUrl);
+            // Step 3: Redirect (302 status code — browser won't cache the redirect)
+            return new RedirectView(urlResponse.getOriginalUrl());
         } catch (UrlNotFoundException e) {
             throw new UrlNotFoundException("URL not found");
         } catch (UrlExpiredException e) {

@@ -5,6 +5,27 @@
 version: '3.8'
 
 services:
+  # Redis Cache
+  # ============
+  # What: In-memory data store for caching URL lookups
+  # Why: 10-100x faster than PostgreSQL for URL redirects
+  # How: URL Service caches shortUrl -> originalUrl mappings
+  redis:
+    image: redis:7-alpine
+    container_name: urlshortener-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - urlshortener-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
   # PostgreSQL Database
   # Shared database with service-owned tables (pragmatic approach)
   postgres:
@@ -101,6 +122,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
       SPRING_DATASOURCE_USERNAME: urlshortener_user
       SPRING_DATASOURCE_PASSWORD: urlshortener_pass
+      # Redis connection - using Docker service name
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       # Zipkin tracing endpoint
       ZIPKIN_URL: http://zipkin:9411/api/v2/spans
     ports:
@@ -109,6 +133,8 @@ services:
       postgres:
         condition: service_healthy
       eureka-server:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - urlshortener-network
@@ -273,6 +299,8 @@ services:
 # Managed by Docker - survives container deletion
 volumes:
   postgres-data:
+    driver: local
+  redis-data:
     driver: local
 
 # Custom network for service communication
